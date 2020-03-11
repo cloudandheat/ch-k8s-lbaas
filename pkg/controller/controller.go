@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"time"
 
-	// appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -41,6 +41,14 @@ const controllerAgentName = "cah-loadbalancer-controller"
 const (
 	// SuccessSynced is used as part of the Event 'reason' when a Foo is synced
 	SuccessSynced = "Synced"
+
+	AnnotationManaged = "cah-loadbalancer.k8s.cloudandheat.com/managed"
+
+	SuccessTakenOver = "TakenOver"
+	SuccessReleased  = "Released"
+
+	MessageResourceTakenOver = "Service taken over by cah-loadbalancer-controller"
+	MessageResourceReleased  = "Service released by cah-loadbalancer-controller"
 )
 
 // Controller is the controller implementation for Foo resources
@@ -77,11 +85,11 @@ func NewController(
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	controller := &Controller{
-		kubeclientset:     kubeclientset,
+		kubeclientset:  kubeclientset,
 		servicesLister: serviceInformer.Lister(),
 		servicesSynced: serviceInformer.Informer().HasSynced,
-		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Foos"),
-		recorder:          recorder,
+		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Foos"),
+		recorder:       recorder,
 	}
 
 	klog.Info("Setting up event handlers")
@@ -212,8 +220,87 @@ func (c *Controller) syncHandler(key string) error {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
-
 	klog.Infof("Sync request for %s/%s", namespace, name)
+
+	svc, err := c.servicesLister.Services(namespace).Get(name)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("service %q in work queue no longer exists", key))
+			// return nil to drop item from queue
+			return nil
+		}
+
+		// return err to re-enqueue item for retrying later
+		return err
+	}
+
+	if !isServiceManaged(svc) && canServiceBeManaged(svc) {
+		return c.takeOverService(svc)
+	}
+
+	if isServiceManaged(svc) && !canServiceBeManaged(svc) {
+		return c.releaseService(svc)
+	}
+
+	return nil
+}
+
+func isServiceManaged(svc *corev1.Service) bool {
+	if svc.Annotations == nil {
+		return false
+	}
+	val, ok := svc.Annotations[AnnotationManaged]
+	if !ok {
+		return false
+	}
+	return val == "true"
+}
+
+func canServiceBeManaged(svc *corev1.Service) bool {
+	if svc.Spec.Type != "LoadBalancer" {
+		return false
+	}
+	if svc.Annotations == nil {
+		return true
+	}
+	val, ok := svc.Annotations[AnnotationManaged]
+	if !ok {
+		return true
+	}
+	return val != "false"
+}
+
+func (c *Controller) takeOverService(svcSrc *corev1.Service) error {
+	svc := svcSrc.DeepCopy()
+	// TODO: find if there is a utility function to set an annotation
+	if svc.Annotations == nil {
+		svc.Annotations = make(map[string]string)
+	}
+	svc.Annotations[AnnotationManaged] = "true"
+
+	klog.Infof("Taking over service %s/%s", svcSrc.Namespace, svcSrc.Name)
+
+	_, err := c.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(svc)
+	if err != nil {
+		return err
+	}
+
+	c.recorder.Event(svc, corev1.EventTypeNormal, SuccessTakenOver, MessageResourceTakenOver)
+	return nil
+}
+
+func (c *Controller) releaseService(svcSrc *corev1.Service) error {
+	svc := svcSrc.DeepCopy()
+	delete(svc.Annotations, AnnotationManaged)
+
+	klog.Infof("Releasing service %s/%s", svcSrc.Namespace, svcSrc.Name)
+
+	_, err := c.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(svc)
+	if err != nil {
+		return err
+	}
+
+	c.recorder.Event(svc, corev1.EventTypeNormal, SuccessReleased, MessageResourceReleased)
 	return nil
 }
 

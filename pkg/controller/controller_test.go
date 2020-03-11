@@ -22,12 +22,14 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/diff"
 	kubeinformers "k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	core "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 )
 
@@ -75,15 +77,15 @@ func (f *fixture) newController() (*Controller, kubeinformers.SharedInformerFact
 	return c, k8sI
 }
 
-func (f *fixture) run(fooName string) {
-	f.runController(fooName, true, false)
+func (f *fixture) run(serviceName string) {
+	f.runController(serviceName, true, false)
 }
 
-func (f *fixture) runExpectError(fooName string) {
-	f.runController(fooName, true, true)
+func (f *fixture) runExpectError(serviceName string) {
+	f.runController(serviceName, true, true)
 }
 
-func (f *fixture) runController(fooName string, startInformers bool, expectError bool) {
+func (f *fixture) runController(serviceName string, startInformers bool, expectError bool) {
 	c, k8sI := f.newController()
 	if startInformers {
 		stopCh := make(chan struct{})
@@ -91,7 +93,7 @@ func (f *fixture) runController(fooName string, startInformers bool, expectError
 		k8sI.Start(stopCh)
 	}
 
-	err := c.syncHandler(fooName)
+	err := c.syncHandler(serviceName)
 	if !expectError && err != nil {
 		f.t.Errorf("error syncing foo: %v", err)
 	} else if expectError && err == nil {
@@ -184,6 +186,100 @@ func (f *fixture) expectCreateServiceAction(s *corev1.Service) {
 
 func (f *fixture) expectUpdateServiceAction(s *corev1.Service) {
 	f.kubeactions = append(f.kubeactions, core.NewUpdateAction(schema.GroupVersionResource{Resource: "services"}, s.Namespace, s))
+}
+
+func newService(name string) *corev1.Service {
+	return &corev1.Service{
+		TypeMeta: metav1.TypeMeta{APIVersion: corev1.SchemeGroupVersion.String()},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: corev1.ServiceSpec{
+			Type: "LoadBalancer",
+		},
+	}
+}
+
+func getKey(svc *corev1.Service, t *testing.T) string {
+	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(svc)
+	if err != nil {
+		t.Errorf("Unexpected error getting key for foo %v: %v", svc.Name, err)
+		return ""
+	}
+	return key
+}
+
+func TestAddsManagedAnnotation(t *testing.T) {
+	f := newFixture(t)
+	s := newService("test-service")
+
+	f.objects = append(f.objects, s)
+	f.serviceLister = append(f.serviceLister, s)
+	f.kubeobjects = append(f.kubeobjects, s)
+
+	annotatedService := s.DeepCopy()
+	annotatedService.Annotations = make(map[string]string)
+	annotatedService.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+
+	f.expectUpdateServiceAction(annotatedService)
+	f.run(getKey(s, t))
+}
+
+func TestRemovesManagedAnnotationIfNotManageable(t *testing.T) {
+	f := newFixture(t)
+	s := newService("test-service")
+	s.Spec.Type = "not-a-load-balancer"
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+
+	f.objects = append(f.objects, s)
+	f.serviceLister = append(f.serviceLister, s)
+	f.kubeobjects = append(f.kubeobjects, s)
+
+	patchedService := s.DeepCopy()
+	patchedService.Annotations = make(map[string]string)
+
+	f.expectUpdateServiceAction(patchedService)
+	f.run(getKey(s, t))
+}
+
+func TestDoesNotUpdateTheServiceIfNotLoadBalancer(t *testing.T) {
+	f := newFixture(t)
+	s := newService("test-service")
+	s.Spec.Type = "something-else"
+
+	f.objects = append(f.objects, s)
+	f.serviceLister = append(f.serviceLister, s)
+	f.kubeobjects = append(f.kubeobjects, s)
+
+	f.run(getKey(s, t))
+}
+
+func TestDoesNotUpdateTheServiceIfAnnotatedWithFalse(t *testing.T) {
+	f := newFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "false"
+
+	f.objects = append(f.objects, s)
+	f.serviceLister = append(f.serviceLister, s)
+	f.kubeobjects = append(f.kubeobjects, s)
+
+	f.run(getKey(s, t))
+}
+
+func TestDoesNotUpdateTheServiceIfAnnotatedWithTrue(t *testing.T) {
+	f := newFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "false"
+
+	f.objects = append(f.objects, s)
+	f.serviceLister = append(f.serviceLister, s)
+	f.kubeobjects = append(f.kubeobjects, s)
+
+	f.run(getKey(s, t))
 }
 
 func int32Ptr(i int32) *int32 { return &i }
