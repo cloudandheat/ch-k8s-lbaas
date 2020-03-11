@@ -217,10 +217,10 @@ func (c *Controller) syncHandler(key string) error {
 	return nil
 }
 
-// enqueueFoo takes a Foo resource and converts it into a namespace/name
+// enqueueService takes a Service resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than Foo.
-func (c *Controller) enqueueFoo(obj interface{}) {
+// passed resources of any type other than Service.
+func (c *Controller) enqueueService(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -253,6 +253,11 @@ func (c *Controller) handleObject(obj interface{}) {
 		klog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
 	}
 	klog.Infof("Processing object: %s/%s", object.GetNamespace(), object.GetName())
+
+	// TODO: select only services which are meant for us; we will have to
+	// add a configurable label/annotation to mark them.
+	c.enqueueService(object)
+
 	/* if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		// If this object is not owned by a Foo, we should not do anything more
 		// with it.
