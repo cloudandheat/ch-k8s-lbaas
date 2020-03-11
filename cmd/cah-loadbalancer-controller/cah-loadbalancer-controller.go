@@ -28,6 +28,7 @@ import (
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
 	"github.com/cloudandheat/cah-loadbalancer/pkg/signals"
+	"github.com/cloudandheat/cah-loadbalancer/pkg/controller"
 )
 
 var (
@@ -54,14 +55,14 @@ func main() {
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 
-	controller := NewController(kubeClient,
-		kubeInformerFactory.Apps().V1().Deployments())
+	lbcontroller := controller.NewController(kubeClient,
+		kubeInformerFactory.Core().V1().Services())
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
 	kubeInformerFactory.Start(stopCh)
 
-	if err = controller.Run(2, stopCh); err != nil {
+	if err = lbcontroller.Run(2, stopCh); err != nil {
 		klog.Fatalf("Error running controller: %s", err.Error())
 	}
 }
