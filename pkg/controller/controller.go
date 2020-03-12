@@ -272,7 +272,7 @@ func isServiceManaged(svc *corev1.Service) bool {
 }
 
 func canServiceBeManaged(svc *corev1.Service) bool {
-	if svc.Spec.Type != "LoadBalancer" {
+	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
 		return false
 	}
 	if svc.Annotations == nil {

@@ -196,7 +196,7 @@ func newService(name string) *corev1.Service {
 			Namespace: metav1.NamespaceDefault,
 		},
 		Spec: corev1.ServiceSpec{
-			Type: "LoadBalancer",
+			Type: corev1.ServiceTypeLoadBalancer,
 		},
 	}
 }
