@@ -144,16 +144,26 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	c.enqueueJob(&CleanupJob{})
 
 	klog.Info("Starting workers")
-	// Launch two workers to process Foo resources
-	for i := 0; i < threadiness; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
-	}
+	go wait.Until(c.runWorker, time.Second, stopCh)
+
+	// 17s is mostly arbitrarily chosen. Here are some guidelines I applied:
+	//
+	// 1. either sligthly larger or massively less than the 30s interval used
+	//    for the full sync of the Service listener
+	// 2. somewhat prime so that the intervals between this job and other jobs
+	//    becomes a bit random
+	go wait.Until(c.periodicCleanup, 17*time.Second, stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh
 	klog.Info("Shutting down workers")
 
 	return nil
+}
+
+func (c *Controller) periodicCleanup() {
+	klog.Info("Triggering periodic cleanup")
+	c.enqueueJob(&CleanupJob{})
 }
 
 // runWorker is a long-running function that will continually call the
