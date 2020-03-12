@@ -142,6 +142,130 @@ func TestMapServiceWithConflictingL4PortsAllocatesNewL3Port(t *testing.T) {
 	assert.Equal(t, "port-id-2", portID)
 }
 
+func TestRemappingTheSameServiceDoesNotChangePorts(t *testing.T) {
+	f := newPortMapperFixture()
+	s1 := newPortMapperService("test-service-1")
+	s2 := newPortMapperService("test-service-2")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
+	f.l3portmanager.On("ProvisionPort").Return("port-id-2", nil).Times(1)
+
+	err := f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err := f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+	setPortAnnotation(s1, portID)
+
+	err = f.portmapper.MapService(s2)
+	assert.Nil(t, err)
+
+	portID, err = f.portmapper.GetServiceL3Port(model.FromService(s2))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-2", portID)
+
+	err = f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err = f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+}
+
+func TestRemappingTheSameServiceWithoutAnnotationIsHandledGracefully(t *testing.T) {
+	f := newPortMapperFixture()
+	s1 := newPortMapperService("test-service-1")
+	s2 := newPortMapperService("test-service-2")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
+	f.l3portmanager.On("ProvisionPort").Return("port-id-2", nil).Times(1)
+	f.l3portmanager.On("ProvisionPort").Return("port-id-3", nil).Times(1)
+
+	err := f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err := f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+
+	err = f.portmapper.MapService(s2)
+	assert.Nil(t, err)
+
+	portID, err = f.portmapper.GetServiceL3Port(model.FromService(s2))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-2", portID)
+
+	err = f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err = f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-3", portID)
+
+	portIDs, err := f.portmapper.GetUsedL3Ports()
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(portIDs))
+	assert.Contains(t, portIDs, "port-id-2")
+	assert.Contains(t, portIDs, "port-id-3")
+}
+
+func TestRemappingAnUpdatedServiceWithAnnotationDoesNotAllocateANewPort(t *testing.T) {
+	f := newPortMapperFixture()
+	s1 := newPortMapperService("test-service-1")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
+
+	err := f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err := f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+
+	setPortAnnotation(s1, portID)
+	s1.Spec.Ports = append(s1.Spec.Ports, corev1.ServicePort{Protocol: corev1.ProtocolUDP, Port: 53})
+
+	err = f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err = f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+}
+
+func TestRemappingAnUpdatedServiceWithAnnotationClearsOldAllocations(t *testing.T) {
+	f := newPortMapperFixture()
+	s1 := newPortMapperService("test-service-1")
+	s2 := newPortMapperService("test-service-2")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
+
+	err := f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err := f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+
+	setPortAnnotation(s1, portID)
+	s1.Spec.Ports = []corev1.ServicePort{{Protocol: corev1.ProtocolUDP, Port: 53}}
+
+	err = f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err = f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+
+	err = f.portmapper.MapService(s2)
+	assert.Nil(t, err)
+
+	portID, err = f.portmapper.GetServiceL3Port(model.FromService(s2))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+}
+
 func TestUnmapServiceRemovesPortAssignment(t *testing.T) {
 	f := newPortMapperFixture()
 	s := newPortMapperService("test-service-1")

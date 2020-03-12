@@ -16,10 +16,6 @@ var (
 	ErrNoSuitablePort   = errors.New("No suitable port available")
 )
 
-const (
-	AnnotationInboundPort = "cah-loadbalancer.k8s.cloudandheat.com/inbound-port"
-)
-
 type PortMapper interface {
 	// Map the given service to a port
 	//
@@ -91,9 +87,10 @@ func (c *PortMapperImpl) emplaceL3Port(portID string) {
 
 // An L3 port is suitable for a set of L4 port allocations if and only if it can
 // satisfy all of them.
-func (c *PortMapperImpl) isPortSuitableFor(l3port model.L3Port, ports []model.L4Port) bool {
+func (c *PortMapperImpl) isPortSuitableFor(l3port model.L3Port, ports []model.L4Port, serviceKey string) bool {
 	for _, l4port := range ports {
-		if !l3port.L4PortFree(l4port) {
+		existing, inUse := l3port.Allocations[l4port.Port]
+		if inUse && existing != serviceKey {
 			return false
 		}
 	}
@@ -106,7 +103,7 @@ func (c *PortMapperImpl) isPortSuitableFor(l3port model.L3Port, ports []model.L4
 // If none matches, returns an ErrNoSuitablePort.
 func (c *PortMapperImpl) findL3PortFor(ports []model.L4Port) (string, error) {
 	for portID, l3port := range c.l3ports {
-		if c.isPortSuitableFor(l3port, ports) {
+		if c.isPortSuitableFor(l3port, ports, "") {
 			return portID, nil
 		}
 	}
@@ -116,7 +113,8 @@ func (c *PortMapperImpl) findL3PortFor(ports []model.L4Port) (string, error) {
 
 func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 	var err error
-	key := c.getServiceKey(svc)
+	id := model.FromService(svc)
+	key := id.ToKey()
 
 	svcModel := model.ServiceModel{
 		L3PortID: "",
@@ -126,18 +124,16 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 		svcModel.Ports[i] = model.L4Port{Protocol: k8sPort.Protocol, Port: k8sPort.Port}
 	}
 
-	portID := ""
-	// first, see if the service has a preferred port
-	if svc.Annotations != nil {
-		portID, _ = svc.Annotations[AnnotationInboundPort]
-		// yes, there is a preferred port
+	portID := getPortAnnotation(svc)
+	if portID != "" {
+		// the service has a preferred port
 		// TODO: retrieve port information from backend to ensure that it really
 		// exists!
 		l3port, exists := c.l3ports[portID]
 		if exists {
 			// the port is already known and thus may have allocations. we have
 			// to check if any allocations conflict
-			if !c.isPortSuitableFor(l3port, svcModel.Ports) {
+			if !c.isPortSuitableFor(l3port, svcModel.Ports, key) {
 				// and they do! so we have to relocate the service to a
 				// different port
 				// TODO: it would be good if that caused an event on the Service
@@ -171,6 +167,16 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 	}
 
 	svcModel.L3PortID = portID
+
+	_, ok := c.services[key]
+	if ok {
+		// we have to unmap the existing service first
+		err = c.UnmapService(id)
+		if err != nil {
+			panic(fmt.Sprintf("UnmapService during MapService failed. Invariants are now broken."))
+		}
+	}
+
 	c.services[key] = svcModel
 	l3port := c.l3ports[portID]
 	for _, port := range svcModel.Ports {
