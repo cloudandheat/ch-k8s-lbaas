@@ -202,7 +202,7 @@ func (pm *OpenStackL3PortManager) deleteUnusedFloatingIPs() error {
 		deleteErr := floatingipsv2.Delete(pm.client, fipID).ExtractErr()
 		if deleteErr != nil {
 			klog.Warningf(
-				"failed to delete orphaned floating ip %q: %s",
+				"Failed to delete orphaned floating ip %q: %s. The operation will be retried later.",
 				fipID,
 				deleteErr.Error())
 		}
@@ -231,7 +231,7 @@ func (pm *OpenStackL3PortManager) CleanUnusedPorts(usedPorts []string) error {
 		// port not in use, issue deletion
 		err := portsv2.Delete(pm.client, port.ID).ExtractErr()
 		if err != nil {
-			klog.Warningf("failed to delete unused port %q: %s", port.ID, err)
+			klog.Warningf("Failed to delete unused port %q: %s. The operation will be retried later.", port.ID, err)
 		}
 		anyDeleted = true
 	}
