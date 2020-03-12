@@ -339,3 +339,112 @@ func TestMapServiceWithAnnotationIsMovedToAnotherPortOnConflict(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "port-id-2", portID)
 }
+
+func TestSetAvailableL3PortsWithSameSetOfPortsHasNoVisibleEffect(t *testing.T) {
+	f := newPortMapperFixture()
+	s := newPortMapperService("test-service")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id", nil)
+
+	err := f.portmapper.MapService(s)
+	assert.Nil(t, err)
+
+	evicted, err := f.portmapper.SetAvailableL3Ports([]string{"port-id"})
+	assert.Nil(t, err)
+	assert.Equal(t, []ServiceIdentifier{}, evicted)
+
+	portID, err := f.portmapper.GetServiceL3Port(s)
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id", portID)
+
+	portIDs, err := f.portmapper.GetUsedL3Ports()
+	assert.Nil(t, err)
+	assert.Equal(t, []string{portID}, portIDs)
+}
+
+func TestSetAvailableL3PortsWithMorePortsHasNoVisibleEffect(t *testing.T) {
+	f := newPortMapperFixture()
+	s := newPortMapperService("test-service")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id", nil)
+
+	err := f.portmapper.MapService(s)
+	assert.Nil(t, err)
+
+	evicted, err := f.portmapper.SetAvailableL3Ports([]string{"some-port", "port-id"})
+	assert.Nil(t, err)
+	assert.Equal(t, []ServiceIdentifier{}, evicted)
+
+	portID, err := f.portmapper.GetServiceL3Port(s)
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id", portID)
+
+	portIDs, err := f.portmapper.GetUsedL3Ports()
+	assert.Nil(t, err)
+	assert.Equal(t, []string{portID}, portIDs)
+}
+
+func TestSetAvailableL3PortsWithMissingPortEvictsService(t *testing.T) {
+	f := newPortMapperFixture()
+	s := newPortMapperService("test-service")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id", nil)
+
+	err := f.portmapper.MapService(s)
+	assert.Nil(t, err)
+
+	evicted, err := f.portmapper.SetAvailableL3Ports([]string{})
+	assert.Nil(t, err)
+	assert.Equal(t, []ServiceIdentifier{FromService(s)}, evicted)
+
+	_, err = f.portmapper.GetServiceL3Port(s)
+	assert.Equal(t, ErrServiceNotMapped, err)
+}
+
+func TestSetAvailableL3PortsWithMissingPortRemovesPort(t *testing.T) {
+	f := newPortMapperFixture()
+	s := newPortMapperService("test-service")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id", nil)
+
+	err := f.portmapper.MapService(s)
+	assert.Nil(t, err)
+
+	evicted, err := f.portmapper.SetAvailableL3Ports([]string{})
+	assert.Nil(t, err)
+	assert.Equal(t, []ServiceIdentifier{FromService(s)}, evicted)
+
+	portIDs, err := f.portmapper.GetUsedL3Ports()
+	assert.Nil(t, err)
+	assert.Equal(t, []string{}, portIDs)
+}
+
+func TestSetAvailableL3PortsWithMissingPortOnlyEvictsAffectedService(t *testing.T) {
+	f := newPortMapperFixture()
+	s1 := newPortMapperService("test-service-1")
+	s2 := newPortMapperService("test-service-2")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
+	f.l3portmanager.On("ProvisionPort").Return("port-id-2", nil).Times(1)
+
+	err := f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	err = f.portmapper.MapService(s2)
+	assert.Nil(t, err)
+
+	evicted, err := f.portmapper.SetAvailableL3Ports([]string{"port-id-2"})
+	assert.Nil(t, err)
+	assert.Equal(t, []ServiceIdentifier{FromService(s1)}, evicted)
+
+	_, err = f.portmapper.GetServiceL3Port(s1)
+	assert.Equal(t, ErrServiceNotMapped, err)
+
+	portID, err := f.portmapper.GetServiceL3Port(s2)
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-2", portID)
+
+	portIDs, err := f.portmapper.GetUsedL3Ports()
+	assert.Nil(t, err)
+	assert.Equal(t, []string{"port-id-2"}, portIDs)
+}

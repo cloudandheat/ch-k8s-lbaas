@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
@@ -13,6 +14,7 @@ import (
 var (
 	ErrServiceNotMapped = errors.New("Service not mapped")
 	ErrNoSuitablePort   = errors.New("No suitable port available")
+	ErrNotAValidKey     = errors.New("Not a valid namespace/name key")
 )
 
 const (
@@ -24,12 +26,61 @@ type L3PortManager interface {
 	CleanUnusedPorts(usedPorts []string) error
 }
 
+type ServiceIdentifier struct {
+	Namespace string
+	Name      string
+}
+
+func FromService(svc *corev1.Service) ServiceIdentifier {
+	return ServiceIdentifier{Namespace: svc.Namespace, Name: svc.Name}
+}
+
+func FromKey(key string) (ServiceIdentifier, error) {
+	parts := strings.SplitN(key, "/", 2)
+	if len(parts) != 2 {
+		return ServiceIdentifier{}, ErrNotAValidKey
+	}
+	return ServiceIdentifier{Namespace: parts[0], Name: parts[1]}, nil
+}
+
+func (id ServiceIdentifier) ToKey() string {
+	return fmt.Sprintf("%s/%s", id.Namespace, id.Name)
+}
+
 type PortMapper interface {
+	// Map the given service to a port
+	//
+	// If required, this will allocate a new port through the backend used for
+	// the port mapper.
+	//
+	// Any errors occuring during port provisioning will be reported back by
+	// this method. If this method reports an error, the service is not mapped.
 	MapService(svc *corev1.Service) error
+
+	// Remove all allocations of the service from the bookkeeping and release
+	// L3 ports which are not used anymore
+	//
+	// Note that the release of ports can only be observed by polling
+	// GetUsedL3Ports.
 	UnmapService(svc *corev1.Service) error
+
+	// Return the ID of the port to which the service is mapped
+	//
+	// Returns ErrServiceNotMapped if the service is currently not mapped.
 	GetServiceL3Port(svc *corev1.Service) (string, error)
+
 	GetLBConfiguration() error
+
+	// Return the list of IDs of the L3 ports which currently have at least one
+	// mapped service.
 	GetUsedL3Ports() ([]string, error)
+
+	// Set the list with available L3 port IDs.
+	//
+	// Any service which is currently mapped to a port which is not in the list
+	// of IDs passed to this method will be unmapped. The identifiers of the
+	// affected services will be returned in the return value.
+	SetAvailableL3Ports(portIDs []string) ([]ServiceIdentifier, error)
 }
 
 type PortMapperImpl struct {
@@ -47,7 +98,7 @@ func NewPortMapper(l3manager L3PortManager) PortMapper {
 }
 
 func (c *PortMapperImpl) getServiceKey(svc *corev1.Service) string {
-	return fmt.Sprintf("%s/%s", svc.Namespace, svc.Name)
+	return FromService(svc).ToKey()
 }
 
 func (c *PortMapperImpl) createNewL3Port() (string, error) {
@@ -185,4 +236,51 @@ func (c *PortMapperImpl) UnmapService(svc *corev1.Service) error {
 		}
 	}
 	return nil
+}
+
+func (c *PortMapperImpl) SetAvailableL3Ports(portIDs []string) ([]ServiceIdentifier, error) {
+	vlog := klog.V(4)
+
+	validPorts := make(map[string]bool)
+	for _, validID := range portIDs {
+		if vlog {
+			vlog.Infof("port %q is considered available", validID)
+		}
+		validPorts[validID] = true
+	}
+	vlog.Infof("%d ports are considered available", len(validPorts))
+
+	result := make([]ServiceIdentifier, 0)
+	for portID, l3port := range c.l3ports {
+		// check if port is in the set of available ports
+		if _, ok := validPorts[portID]; ok {
+			vlog.Infof("port %q is valid, skipping", portID)
+			continue
+		}
+
+		vlog.Infof(
+			"port %q is not valid, evicting services from %d allocations",
+			portID, len(l3port.Allocations),
+		)
+
+		// it is not! we have to force-evict the affected services
+		for _, serviceKey := range l3port.Allocations {
+			vlog.Infof("evicting service %q", serviceKey)
+			_, exists := c.services[serviceKey]
+			// we check for existence here to avoid returning the same service
+			// more than once if it has multiple allocations
+			if exists {
+				delete(c.services, serviceKey)
+				id, err := FromKey(serviceKey)
+				if err != nil {
+					panic(fmt.Sprintf("internal error: key %q is not valid", serviceKey))
+				}
+				result = append(result, id)
+			}
+		}
+
+		delete(c.l3ports, portID)
+	}
+
+	return result, nil
 }
