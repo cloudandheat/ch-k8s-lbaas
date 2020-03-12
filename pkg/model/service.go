@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 )
 
 var (
-	ErrNotAValidKey     = errors.New("Not a valid namespace/name key")
+	ErrNotAValidKey = errors.New("Not a valid namespace/name key")
 )
 
 type ServiceIdentifier struct {
@@ -19,6 +20,14 @@ type ServiceIdentifier struct {
 
 func FromService(svc *corev1.Service) ServiceIdentifier {
 	return ServiceIdentifier{Namespace: svc.Namespace, Name: svc.Name}
+}
+
+func FromObject(obj interface{}) (ServiceIdentifier, error) {
+	info, err := meta.Accessor(obj)
+	if err != nil {
+		return ServiceIdentifier{}, err
+	}
+	return ServiceIdentifier{Namespace: info.GetNamespace(), Name: info.GetName()}, nil
 }
 
 func FromKey(key string) (ServiceIdentifier, error) {

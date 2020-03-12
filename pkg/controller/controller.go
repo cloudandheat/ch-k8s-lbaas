@@ -21,7 +21,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -35,6 +34,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
+	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
 	"github.com/cloudandheat/cah-loadbalancer/pkg/openstack"
 )
 
@@ -43,8 +43,6 @@ const controllerAgentName = "cah-loadbalancer-controller"
 const (
 	// SuccessSynced is used as part of the Event 'reason' when a Foo is synced
 	SuccessSynced = "Synced"
-
-	AnnotationManaged = "cah-loadbalancer.k8s.cloudandheat.com/managed"
 
 	SuccessTakenOver = "TakenOver"
 	SuccessReleased  = "Released"
@@ -71,7 +69,7 @@ type Controller struct {
 	// Kubernetes API.
 	recorder record.EventRecorder
 
-	portmapper PortMapper
+	worker *Worker
 }
 
 // NewController returns a new sample controller
@@ -90,13 +88,15 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
+	portmapper := NewPortMapper(l3portmanager)
+
 	controller := &Controller{
 		kubeclientset:  kubeclientset,
 		servicesLister: serviceInformer.Lister(),
 		servicesSynced: serviceInformer.Informer().HasSynced,
-		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Foos"),
+		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Jobs"),
 		recorder:       recorder,
-		portmapper:     NewPortMapper(l3portmanager),
+		worker:         NewWorker(l3portmanager, portmapper, kubeclientset, serviceInformer.Lister()),
 	}
 
 	klog.Info("Setting up event handlers")
@@ -180,32 +180,39 @@ func (c *Controller) processNextWorkItem() bool {
 		// put back on the workqueue and attempted again after a back-off
 		// period.
 		defer c.workqueue.Done(obj)
-		var key string
+		var job WorkerJob
 		var ok bool
 		// We expect strings to come off the workqueue. These are of the
 		// form namespace/name. We do this as the delayed nature of the
 		// workqueue means the items in the informer cache may actually be
 		// more up to date that when the item was initially put onto the
 		// workqueue.
-		if key, ok = obj.(string); !ok {
+		if job, ok = obj.(WorkerJob); !ok {
 			// As the item in the workqueue is actually invalid, we call
 			// Forget here else we'd go into a loop of attempting to
 			// process a work item that is invalid.
 			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("expected WorkerJob in workqueue but got %#v", obj))
 			return nil
 		}
 		// Run the syncHandler, passing it the namespace/name string of the
 		// Foo resource to be synced.
-		if err := c.syncHandler(key); err != nil {
-			// Put the item back on the workqueue to handle any transient errors.
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
+		requeue, err := job.Run(c.worker)
+		if err != nil {
+			if requeue != Drop {
+				return fmt.Errorf("error processing job %s: %s, requeuing", job.ToString(), err.Error())
+			} else {
+				return fmt.Errorf("error processing job %s: %s, dropping", job.ToString(), err.Error())
+			}
 		}
+		if requeue != Drop {
+			c.workqueue.AddRateLimited(job)
+		}
+
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced '%s'", key)
+		klog.Infof("Successfully executed %s", job.ToString())
 		return nil
 	}(obj)
 
@@ -217,111 +224,8 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-// syncHandler compares the actual state with the desired, and attempts to
-// converge the two. It then updates the Status block of the Foo resource
-// with the current status of the resource.
-func (c *Controller) syncHandler(key string) error {
-	// Convert the namespace/name string into a distinct namespace and name
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
-	}
-	klog.Infof("Sync request for %s/%s", namespace, name)
-
-	svc, err := c.servicesLister.Services(namespace).Get(name)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("service %q in work queue no longer exists", key))
-			// return nil to drop item from queue
-			return nil
-		}
-
-		// return err to re-enqueue item for retrying later
-		return err
-	}
-
-	if !isServiceManaged(svc) && canServiceBeManaged(svc) {
-		return c.takeOverService(svc)
-	}
-
-	if isServiceManaged(svc) && !canServiceBeManaged(svc) {
-		return c.releaseService(svc)
-	}
-
-	return nil
-}
-
-func isServiceManaged(svc *corev1.Service) bool {
-	if svc.Annotations == nil {
-		return false
-	}
-	val, ok := svc.Annotations[AnnotationManaged]
-	if !ok {
-		return false
-	}
-	return val == "true"
-}
-
-func canServiceBeManaged(svc *corev1.Service) bool {
-	if svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
-		return false
-	}
-	if svc.Annotations == nil {
-		return true
-	}
-	val, ok := svc.Annotations[AnnotationManaged]
-	if !ok {
-		return true
-	}
-	return val != "false"
-}
-
-func (c *Controller) takeOverService(svcSrc *corev1.Service) error {
-	svc := svcSrc.DeepCopy()
-	// TODO: find if there is a utility function to set an annotation
-	if svc.Annotations == nil {
-		svc.Annotations = make(map[string]string)
-	}
-	svc.Annotations[AnnotationManaged] = "true"
-
-	klog.Infof("Taking over service %s/%s", svcSrc.Namespace, svcSrc.Name)
-
-	_, err := c.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(svc)
-	if err != nil {
-		return err
-	}
-
-	c.recorder.Event(svc, corev1.EventTypeNormal, SuccessTakenOver, MessageResourceTakenOver)
-	return nil
-}
-
-func (c *Controller) releaseService(svcSrc *corev1.Service) error {
-	svc := svcSrc.DeepCopy()
-	delete(svc.Annotations, AnnotationManaged)
-
-	klog.Infof("Releasing service %s/%s", svcSrc.Namespace, svcSrc.Name)
-
-	_, err := c.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(svc)
-	if err != nil {
-		return err
-	}
-
-	c.recorder.Event(svc, corev1.EventTypeNormal, SuccessReleased, MessageResourceReleased)
-	return nil
-}
-
-// enqueueService takes a Service resource and converts it into a namespace/name
-// string which is then put onto the work queue. This method should *not* be
-// passed resources of any type other than Service.
-func (c *Controller) enqueueService(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	c.workqueue.Add(key)
+func (c *Controller) enqueueJob(job WorkerJob) {
+	c.workqueue.Add(job)
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
@@ -350,7 +254,12 @@ func (c *Controller) handleObject(obj interface{}) {
 
 	// TODO: select only services which are meant for us; we will have to
 	// add a configurable label/annotation to mark them.
-	c.enqueueService(object)
+	identifier, err := model.FromObject(object)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	c.enqueueJob(&MapServiceJob{identifier})
 
 	/* if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		// If this object is not owned by a Foo, we should not do anything more

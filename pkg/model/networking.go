@@ -6,12 +6,12 @@ import (
 
 type L4Port struct {
 	Protocol corev1.Protocol
-	Port int32
+	Port     int32
 }
 
 type ServiceModel struct {
 	L3PortID string
-	Ports []L4Port
+	Ports    []L4Port
 }
 
 type L3Port struct {

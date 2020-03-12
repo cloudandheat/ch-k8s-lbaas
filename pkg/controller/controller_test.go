@@ -87,45 +87,6 @@ func (f *fixture) newController() (*Controller, kubeinformers.SharedInformerFact
 	return c, k8sI
 }
 
-func (f *fixture) run(serviceName string) {
-	f.runController(serviceName, true, false)
-}
-
-func (f *fixture) runExpectError(serviceName string) {
-	f.runController(serviceName, true, true)
-}
-
-func (f *fixture) runController(serviceName string, startInformers bool, expectError bool) {
-	c, k8sI := f.newController()
-	if startInformers {
-		stopCh := make(chan struct{})
-		defer close(stopCh)
-		k8sI.Start(stopCh)
-	}
-
-	err := c.syncHandler(serviceName)
-	if !expectError && err != nil {
-		f.t.Errorf("error syncing foo: %v", err)
-	} else if expectError && err == nil {
-		f.t.Error("expected error syncing foo, got nil")
-	}
-
-	k8sActions := filterInformerActions(f.kubeclient.Actions())
-	for i, action := range k8sActions {
-		if len(f.kubeactions) < i+1 {
-			f.t.Errorf("%d unexpected actions: %+v", len(k8sActions)-len(f.kubeactions), k8sActions[i:])
-			break
-		}
-
-		expectedAction := f.kubeactions[i]
-		checkAction(expectedAction, action, f.t)
-	}
-
-	if len(f.kubeactions) > len(k8sActions) {
-		f.t.Errorf("%d additional expected actions:%+v", len(f.kubeactions)-len(k8sActions), f.kubeactions[len(k8sActions):])
-	}
-}
-
 // checkAction verifies that expected and actual actions are equal and both have
 // same attached resources
 func checkAction(expected, actual core.Action, t *testing.T) {
@@ -218,78 +179,6 @@ func getKey(svc *corev1.Service, t *testing.T) string {
 		return ""
 	}
 	return key
-}
-
-func TestAddsManagedAnnotation(t *testing.T) {
-	f := newFixture(t)
-	s := newService("test-service")
-
-	f.objects = append(f.objects, s)
-	f.serviceLister = append(f.serviceLister, s)
-	f.kubeobjects = append(f.kubeobjects, s)
-
-	annotatedService := s.DeepCopy()
-	annotatedService.Annotations = make(map[string]string)
-	annotatedService.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
-
-	f.expectUpdateServiceAction(annotatedService)
-	f.run(getKey(s, t))
-}
-
-func TestRemovesManagedAnnotationIfNotManageable(t *testing.T) {
-	f := newFixture(t)
-	s := newService("test-service")
-	s.Spec.Type = "not-a-load-balancer"
-	s.Annotations = make(map[string]string)
-	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
-
-	f.objects = append(f.objects, s)
-	f.serviceLister = append(f.serviceLister, s)
-	f.kubeobjects = append(f.kubeobjects, s)
-
-	patchedService := s.DeepCopy()
-	patchedService.Annotations = make(map[string]string)
-
-	f.expectUpdateServiceAction(patchedService)
-	f.run(getKey(s, t))
-}
-
-func TestDoesNotUpdateTheServiceIfNotLoadBalancer(t *testing.T) {
-	f := newFixture(t)
-	s := newService("test-service")
-	s.Spec.Type = "something-else"
-
-	f.objects = append(f.objects, s)
-	f.serviceLister = append(f.serviceLister, s)
-	f.kubeobjects = append(f.kubeobjects, s)
-
-	f.run(getKey(s, t))
-}
-
-func TestDoesNotUpdateTheServiceIfAnnotatedWithFalse(t *testing.T) {
-	f := newFixture(t)
-	s := newService("test-service")
-	s.Annotations = make(map[string]string)
-	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "false"
-
-	f.objects = append(f.objects, s)
-	f.serviceLister = append(f.serviceLister, s)
-	f.kubeobjects = append(f.kubeobjects, s)
-
-	f.run(getKey(s, t))
-}
-
-func TestDoesNotUpdateTheServiceIfAnnotatedWithTrue(t *testing.T) {
-	f := newFixture(t)
-	s := newService("test-service")
-	s.Annotations = make(map[string]string)
-	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "false"
-
-	f.objects = append(f.objects, s)
-	f.serviceLister = append(f.serviceLister, s)
-	f.kubeobjects = append(f.kubeobjects, s)
-
-	f.run(getKey(s, t))
 }
 
 func int32Ptr(i int32) *int32 { return &i }
