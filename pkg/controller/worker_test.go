@@ -224,6 +224,44 @@ func TestSyncServiceCallsMapServiceForManagedServiceAndAnnotatesPort(t *testing.
 	assert.Equal(t, Drop, requeue)
 }
 
+func TestSyncServiceDoesNotUpdateServiceIfMappingHasNotChanged(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	setPortAnnotation(s, "random-port-id")
+	f.addService(s)
+
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("random-port-id", nil).Times(1)
+
+	j := &SyncServiceJob{model.FromService(s)}
+
+	_, requeue := f.run(j)
+	assert.Equal(t, Drop, requeue)
+}
+
+func TestSyncServiceUpdatesServiceIfMappingHasChanged(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	setPortAnnotation(s, "old-port-id")
+	f.addService(s)
+
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("random-port-id", nil).Times(1)
+
+	updatedS := s.DeepCopy()
+	setPortAnnotation(updatedS, "random-port-id")
+	f.expectUpdateServiceAction(updatedS)
+
+	j := &SyncServiceJob{model.FromService(s)}
+
+	_, requeue := f.run(j)
+	assert.Equal(t, Drop, requeue)
+}
+
 func TestSyncServiceRequeuesIfMapServiceFails(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")

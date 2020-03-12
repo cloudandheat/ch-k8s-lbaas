@@ -8,7 +8,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
 	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
@@ -23,6 +26,20 @@ const (
 	RequeueTail = RequeueMode(2)
 )
 
+const (
+	EventServiceTakenOver = "TakenOver"
+	EventServiceReleased  = "Released"
+	EventServiceMapped    = "Mapped"
+	EventServiceRemapped  = "Remapped"
+	EventServiceUnmapped  = "Unmapped"
+
+	MessageEventServiceTakenOver = "Service taken over by cah-loadbalancer-controller"
+	MessageEventServiceReleased  = "Service released by cah-loadbalancer-controller"
+	MessageEventServiceMapped    = "Service mapped to OpenStack port %q"
+	MessageEventServiceRemapped  = "Service mapping changed from port %q to %q (due to conflict)"
+	MessageEventServiceUnmapped  = "Service unmapped"
+)
+
 var (
 	ErrCleanupBarrierActive = goerrors.New("Cleanup barrier is in place")
 )
@@ -32,6 +49,7 @@ type Worker struct {
 	portmapper     PortMapper
 	servicesLister corelisters.ServiceLister
 	kubeclientset  kubernetes.Interface
+	recorder       record.EventRecorder
 
 	AllowCleanups bool
 }
@@ -51,13 +69,16 @@ func (w *Worker) takeOverService(svcSrc *corev1.Service) error {
 		return err
 	}
 
-	// TODO: re-add recorder use
-	// w.recorder.Event(svc, corev1.EventTypeNormal, SuccessTakenOver, MessageResourceTakenOver)
+	w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceTakenOver, MessageEventServiceTakenOver)
 	return nil
 }
 
 func (w *Worker) releaseService(svcSrc *corev1.Service) error {
+	oldPortID := getPortAnnotation(svcSrc)
 	w.portmapper.UnmapService(model.FromService(svcSrc))
+	if oldPortID != "" {
+		w.recorder.Event(svcSrc, corev1.EventTypeNormal, EventServiceUnmapped, MessageEventServiceUnmapped)
+	}
 
 	svc := svcSrc.DeepCopy()
 	delete(svc.Annotations, AnnotationManaged)
@@ -70,8 +91,7 @@ func (w *Worker) releaseService(svcSrc *corev1.Service) error {
 		return err
 	}
 
-	// TODO: re-add recorder use
-	// w.recorder.Event(svc, corev1.EventTypeNormal, SuccessReleased, MessageResourceReleased)
+	w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceReleased, MessageEventServiceReleased)
 	return nil
 }
 
@@ -87,15 +107,22 @@ func (w *Worker) mapService(svcSrc *corev1.Service) error {
 	if err != nil {
 		return err
 	}
-	setPortAnnotation(svc, newPortID)
+	oldPortID := getPortAnnotation(svc)
+	if oldPortID != newPortID {
+		setPortAnnotation(svc, newPortID)
 
-	_, err = w.kubeclientset.CoreV1().Services(id.Namespace).Update(svc)
-	if err != nil {
-		return err
+		_, err = w.kubeclientset.CoreV1().Services(id.Namespace).Update(svc)
+		if err != nil {
+			return err
+		}
+
+		if oldPortID != "" {
+			w.recorder.Event(svc, corev1.EventTypeWarning, EventServiceRemapped, fmt.Sprintf(MessageEventServiceRemapped, oldPortID, newPortID))
+		} else {
+			w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceMapped, fmt.Sprintf(MessageEventServiceMapped, newPortID))
+		}
 	}
 
-	// TODO: re-add recorder use
-	// w.recorder.Event(svc, corev1.EventTypeNormal, SuccessReleased, MessageResourceReleased)
 	return nil
 }
 
@@ -118,11 +145,18 @@ func NewWorker(
 	portmapper PortMapper,
 	kubeclientset kubernetes.Interface,
 	services corelisters.ServiceLister) *Worker {
+
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(klog.Infof)
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
+
 	return &Worker{
 		l3portmanager:  l3portmanager,
 		portmapper:     portmapper,
 		kubeclientset:  kubeclientset,
 		servicesLister: services,
+		recorder:       recorder,
 		AllowCleanups:  false,
 	}
 }
