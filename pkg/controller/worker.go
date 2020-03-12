@@ -97,11 +97,11 @@ func (j *RemoveCleanupBarrierJob) ToString() string {
 	return "RemoveCleanupBarrier"
 }
 
-type MapServiceJob struct {
+type SyncServiceJob struct {
 	Service model.ServiceIdentifier
 }
 
-func (j *MapServiceJob) Run(w *Worker) (RequeueMode, error) {
+func (j *SyncServiceJob) Run(w *Worker) (RequeueMode, error) {
 	svc, err := w.servicesLister.Services(j.Service.Namespace).Get(j.Service.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -130,9 +130,26 @@ func (j *MapServiceJob) Run(w *Worker) (RequeueMode, error) {
 		return Drop, nil
 	}
 
-	return Drop, fmt.Errorf("Service did not match any code branch")
+	err = w.portmapper.MapService(svc)
+	if err != nil {
+		return RequeueTail, err
+	}
+	// we have to update the annotation
+	svcCopy := svc.DeepCopy()
+	newPortID, err := w.portmapper.GetServiceL3Port(j.Service)
+	if err != nil {
+		return RequeueTail, err
+	}
+	setPortAnnotation(svcCopy, newPortID)
+
+	_, err = w.kubeclientset.CoreV1().Services(svc.Namespace).Update(svcCopy)
+	if err != nil {
+		return RequeueTail, err
+	}
+
+	return Drop, nil
 }
 
-func (j *MapServiceJob) ToString() string {
-	return fmt.Sprintf("MapService(%q)", j.Service.ToKey())
+func (j *SyncServiceJob) ToString() string {
+	return fmt.Sprintf("SyncServiceJob(%q)", j.Service.ToKey())
 }

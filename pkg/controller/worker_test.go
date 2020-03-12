@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -54,6 +55,10 @@ func (f *workerFixture) run(j WorkerJob) (*Worker, RequeueMode) {
 	return w, requeue
 }
 
+func (f *workerFixture) runExpectError(j WorkerJob) (*Worker, RequeueMode, error) {
+	return f.runWithChecksAndEnv(j, true, true)
+}
+
 func (f *workerFixture) runWithChecksAndEnv(j WorkerJob, startInformers bool, expectError bool) (*Worker, RequeueMode, error) {
 	w, k8sI := f.newWorker()
 	if startInformers {
@@ -83,6 +88,9 @@ func (f *workerFixture) runWithChecksAndEnv(j WorkerJob, startInformers bool, ex
 	if len(f.kubeactions) > len(k8sActions) {
 		f.t.Errorf("%d additional expected actions:%+v", len(f.kubeactions)-len(k8sActions), f.kubeactions[len(k8sActions):])
 	}
+
+	f.portmapper.AssertExpectations(f.t)
+	f.l3portmanager.AssertExpectations(f.t)
 
 	return w, requeueMode, err
 }
@@ -118,11 +126,11 @@ func TestCleanupBarrierRemoval(t *testing.T) {
 	assert.True(t, w.AllowCleanups)
 }
 
-func TestMapServiceAddsManagedAnnotationIfMissing(t *testing.T) {
+func TestSyncServiceAddsManagedAnnotationIfMissing(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")
 	f.addService(s)
-	j := &MapServiceJob{model.FromService(s)}
+	j := &SyncServiceJob{model.FromService(s)}
 
 	updatedS := s.DeepCopy()
 	updatedS.Annotations = make(map[string]string)
@@ -133,7 +141,7 @@ func TestMapServiceAddsManagedAnnotationIfMissing(t *testing.T) {
 	assert.Equal(t, Drop, requeue)
 }
 
-func TestMapServiceRemovesManagedAnnotationIfNotManageable(t *testing.T) {
+func TestSyncServiceRemovesManagedAnnotationIfNotManageable(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")
 	s.Spec.Type = "not-a-load-balancer"
@@ -141,7 +149,7 @@ func TestMapServiceRemovesManagedAnnotationIfNotManageable(t *testing.T) {
 	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
 	f.addService(s)
 
-	j := &MapServiceJob{model.FromService(s)}
+	j := &SyncServiceJob{model.FromService(s)}
 
 	updatedS := s.DeepCopy()
 	updatedS.Annotations = make(map[string]string)
@@ -152,39 +160,77 @@ func TestMapServiceRemovesManagedAnnotationIfNotManageable(t *testing.T) {
 	assert.Equal(t, Drop, requeue)
 }
 
-func TestMapServiceIgnoresUnmanageableAndUnmanagedService(t *testing.T) {
+func TestSyncServiceIgnoresUnmanageableAndUnmanagedService(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")
 	s.Spec.Type = "not-a-load-balancer"
 	f.addService(s)
 
-	j := &MapServiceJob{model.FromService(s)}
+	j := &SyncServiceJob{model.FromService(s)}
 
 	_, requeue := f.run(j)
 	assert.Equal(t, Drop, requeue)
 }
 
-func TestMapServiceDoesNotUpdateTheServiceIfNotLoadBalancer(t *testing.T) {
+func TestSyncServiceDoesNotUpdateTheServiceIfNotLoadBalancer(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")
 	s.Spec.Type = "something-else"
 	f.addService(s)
 
-	j := &MapServiceJob{model.FromService(s)}
+	j := &SyncServiceJob{model.FromService(s)}
 
 	_, requeue := f.run(j)
 	assert.Equal(t, Drop, requeue)
 }
 
-func TestDoesNotUpdateTheServiceIfAnnotatedWithFalse(t *testing.T) {
+func TestSyncServiceDoesNotUpdateTheServiceIfAnnotatedWithFalse(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")
 	s.Annotations = make(map[string]string)
 	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "false"
 	f.addService(s)
 
-	j := &MapServiceJob{model.FromService(s)}
+	j := &SyncServiceJob{model.FromService(s)}
 
 	_, requeue := f.run(j)
 	assert.Equal(t, Drop, requeue)
+}
+
+func TestSyncServiceCallsMapServiceForManagedServiceAndAnnotatesPort(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	f.addService(s)
+
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("random-port-id", nil).Times(1)
+
+	updatedS := s.DeepCopy()
+	setPortAnnotation(updatedS, "random-port-id")
+	f.expectUpdateServiceAction(updatedS)
+
+	j := &SyncServiceJob{model.FromService(s)}
+
+	_, requeue := f.run(j)
+	assert.Equal(t, Drop, requeue)
+}
+
+func TestSyncServiceRequeuesIfMapServiceFails(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	f.addService(s)
+
+	someError := fmt.Errorf("some error")
+
+	f.portmapper.On("MapService", s).Return(someError).Times(1)
+
+	j := &SyncServiceJob{model.FromService(s)}
+
+	_, requeue, err := f.runExpectError(j)
+	assert.Equal(t, someError, err)
+	assert.Equal(t, RequeueTail, requeue)
 }

@@ -259,7 +259,7 @@ func (c *Controller) handleObject(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.enqueueJob(&MapServiceJob{identifier})
+	c.enqueueJob(&SyncServiceJob{identifier})
 
 	/* if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		// If this object is not owned by a Foo, we should not do anything more
