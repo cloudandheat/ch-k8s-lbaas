@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	AnnotationManaged = "cah-loadbalancer.k8s.cloudandheat.com/managed"
+	AnnotationManaged     = "cah-loadbalancer.k8s.cloudandheat.com/managed"
 	AnnotationInboundPort = "cah-loadbalancer.k8s.cloudandheat.com/inbound-port"
 )
 

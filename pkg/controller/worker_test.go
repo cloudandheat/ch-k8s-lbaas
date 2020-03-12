@@ -28,6 +28,8 @@ type workerFixture struct {
 
 	l3portmanager *ostesting.MockL3PortManager
 	portmapper    *controllertesting.MockPortMapper
+
+	willAllowCleanups bool
 }
 
 func newWorkerFixture(t *testing.T) *workerFixture {
@@ -47,7 +49,9 @@ func (f *workerFixture) newWorker() (*Worker, kubeinformers.SharedInformerFactor
 		k8sI.Core().V1().Services().Informer().GetIndexer().Add(s)
 	}
 
-	return NewWorker(f.l3portmanager, f.portmapper, f.kubeclient, k8sI.Core().V1().Services().Lister()), k8sI
+	w := NewWorker(f.l3portmanager, f.portmapper, f.kubeclient, k8sI.Core().V1().Services().Lister())
+	w.AllowCleanups = f.willAllowCleanups
+	return w, k8sI
 }
 
 func (f *workerFixture) run(j WorkerJob) (*Worker, RequeueMode) {
@@ -274,6 +278,69 @@ func TestRemoveServiceRetiresIfUnmappingFails(t *testing.T) {
 	f.portmapper.On("UnmapService", model.FromService(s)).Return(someError).Times(1)
 
 	j := &RemoveServiceJob{model.FromService(s), s.Annotations}
+
+	_, requeue, err := f.runExpectError(j)
+	assert.Equal(t, RequeueTail, requeue)
+	assert.Equal(t, someError, err)
+}
+
+func TestRemoveServiceIgnoresUnmanagedService(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	// not calling f.addService yields the same error as a deleted service
+
+	j := &RemoveServiceJob{model.FromService(s), s.Annotations}
+
+	_, requeue := f.run(j)
+	assert.Equal(t, Drop, requeue)
+}
+
+func TestCleanupJobFailsWithRequeueIfBarrierIsInPlace(t *testing.T) {
+	f := newWorkerFixture(t)
+
+	j := &CleanupJob{}
+
+	_, requeue, err := f.runExpectError(j)
+	assert.Equal(t, RequeueTail, requeue)
+	assert.Equal(t, ErrCleanupBarrierActive, err)
+}
+
+func TestCleanupJobAsksPortmanagerToRemoveUnusedPorts(t *testing.T) {
+	f := newWorkerFixture(t)
+	f.willAllowCleanups = true
+
+	f.portmapper.On("GetUsedL3Ports").Return([]string{"a", "b"}, nil).Times(1)
+	f.l3portmanager.On("CleanUnusedPorts", []string{"a", "b"}).Return(nil).Times(1)
+
+	j := &CleanupJob{}
+
+	_, requeue := f.run(j)
+	assert.Equal(t, Drop, requeue)
+}
+
+func TestCleanupJobRetriesOnErrorFromPortmapper(t *testing.T) {
+	f := newWorkerFixture(t)
+	f.willAllowCleanups = true
+
+	someError := fmt.Errorf("fnord")
+	f.portmapper.On("GetUsedL3Ports").Return(nil, someError).Times(1)
+
+	j := &CleanupJob{}
+
+	_, requeue, err := f.runExpectError(j)
+	assert.Equal(t, RequeueTail, requeue)
+	assert.Equal(t, someError, err)
+}
+
+func TestCleanupJobRetriesOnErrorFromPortmanager(t *testing.T) {
+	f := newWorkerFixture(t)
+	f.willAllowCleanups = true
+
+	someError := fmt.Errorf("fnord")
+	f.portmapper.On("GetUsedL3Ports").Return([]string{"a", "b"}, nil).Times(1)
+	f.l3portmanager.On("CleanUnusedPorts", []string{"a", "b"}).Return(someError).Times(1)
+
+	j := &CleanupJob{}
 
 	_, requeue, err := f.runExpectError(j)
 	assert.Equal(t, RequeueTail, requeue)

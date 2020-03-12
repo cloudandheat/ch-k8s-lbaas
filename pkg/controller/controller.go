@@ -117,7 +117,7 @@ func NewController(
 			} */
 			controller.handleObject(new)
 		},
-		DeleteFunc: controller.handleObject,
+		DeleteFunc: controller.deleteObject,
 	})
 
 	return controller, nil
@@ -139,6 +139,9 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	if ok := cache.WaitForCacheSync(stopCh, c.servicesSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
+	// we now enqueue a barrier clear job, as well as a cleanup job
+	c.enqueueJob(&RemoveCleanupBarrierJob{})
+	c.enqueueJob(&CleanupJob{})
 
 	klog.Info("Starting workers")
 	// Launch two workers to process Foo resources
@@ -238,17 +241,8 @@ func (c *Controller) handleObject(obj interface{}) {
 	var ok bool
 	klog.Info("handleObject called")
 	if object, ok = obj.(metav1.Object); !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("error decoding object, invalid type"))
-			return
-		}
-		object, ok = tombstone.Obj.(metav1.Object)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
-			return
-		}
-		klog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
+		klog.V(5).Infof("ignoring non-castable object in handleObject; expecting deletion event")
+		return
 	}
 	klog.Infof("Processing object: %s/%s", object.GetNamespace(), object.GetName())
 
@@ -277,4 +271,35 @@ func (c *Controller) handleObject(obj interface{}) {
 		c.enqueueFoo(foo)
 		return
 	} */
+}
+
+func (c *Controller) deleteObject(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("error decoding object, invalid type"))
+			return
+		}
+		object, ok = tombstone.Obj.(metav1.Object)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
+			return
+		}
+		klog.Infof("Recovered deleted object '%s' from tombstone", object.GetName())
+	}
+
+	identifier, err := model.FromObject(object)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	job := &RemoveServiceJob{}
+	job.Service = identifier
+	job.Annotations = make(map[string]string)
+	for k, v := range object.GetAnnotations() {
+		job.Annotations[k] = v
+	}
+	c.enqueueJob(job)
 }

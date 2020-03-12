@@ -1,6 +1,7 @@
 package controller
 
 import (
+	goerrors "errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -20,6 +21,10 @@ const (
 	Drop        = RequeueMode(0)
 	RequeueHead = RequeueMode(1)
 	RequeueTail = RequeueMode(2)
+)
+
+var (
+	ErrCleanupBarrierActive = goerrors.New("Cleanup barrier is in place")
 )
 
 type Worker struct {
@@ -67,6 +72,44 @@ func (w *Worker) releaseService(svcSrc *corev1.Service) error {
 	return nil
 }
 
+func (w *Worker) mapService(svcSrc *corev1.Service) error {
+	err := w.portmapper.MapService(svcSrc)
+	if err != nil {
+		return err
+	}
+
+	id := model.FromService(svcSrc)
+	svc := svcSrc.DeepCopy()
+	newPortID, err := w.portmapper.GetServiceL3Port(id)
+	if err != nil {
+		return err
+	}
+	setPortAnnotation(svc, newPortID)
+
+	_, err = w.kubeclientset.CoreV1().Services(id.Namespace).Update(svc)
+	if err != nil {
+		return err
+	}
+
+	// TODO: re-add recorder use
+	// w.recorder.Event(svc, corev1.EventTypeNormal, SuccessReleased, MessageResourceReleased)
+	return nil
+}
+
+func (w *Worker) cleanupPorts() error {
+	usedPorts, err := w.portmapper.GetUsedL3Ports()
+	if err != nil {
+		return err
+	}
+
+	err = w.l3portmanager.CleanUnusedPorts(usedPorts)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func NewWorker(
 	l3portmanager openstack.L3PortManager,
 	portmapper PortMapper,
@@ -96,7 +139,6 @@ func (j *RemoveCleanupBarrierJob) Run(state *Worker) (RequeueMode, error) {
 func (j *RemoveCleanupBarrierJob) ToString() string {
 	return "RemoveCleanupBarrier"
 }
-
 
 type SyncServiceJob struct {
 	Service model.ServiceIdentifier
@@ -132,23 +174,10 @@ func (j *SyncServiceJob) Run(w *Worker) (RequeueMode, error) {
 		return Drop, nil
 	}
 
-	err = w.portmapper.MapService(svc)
+	err = w.mapService(svc)
 	if err != nil {
 		return RequeueTail, err
 	}
-	// we have to update the annotation
-	svcCopy := svc.DeepCopy()
-	newPortID, err := w.portmapper.GetServiceL3Port(j.Service)
-	if err != nil {
-		return RequeueTail, err
-	}
-	setPortAnnotation(svcCopy, newPortID)
-
-	_, err = w.kubeclientset.CoreV1().Services(svc.Namespace).Update(svcCopy)
-	if err != nil {
-		return RequeueTail, err
-	}
-
 	return Drop, nil
 }
 
@@ -156,13 +185,19 @@ func (j *SyncServiceJob) ToString() string {
 	return fmt.Sprintf("SyncServiceJob(%q)", j.Service.ToKey())
 }
 
-
 type RemoveServiceJob struct {
-	Service model.ServiceIdentifier
+	Service     model.ServiceIdentifier
 	Annotations map[string]string
 }
 
 func (j *RemoveServiceJob) Run(w *Worker) (RequeueMode, error) {
+	if j.Annotations == nil {
+		return Drop, nil
+	}
+	if label, ok := j.Annotations[AnnotationManaged]; !ok || label != "true" {
+		return Drop, nil
+	}
+
 	err := w.portmapper.UnmapService(j.Service)
 	if err != nil {
 		return RequeueTail, err
@@ -172,4 +207,22 @@ func (j *RemoveServiceJob) Run(w *Worker) (RequeueMode, error) {
 
 func (j *RemoveServiceJob) ToString() string {
 	return fmt.Sprintf("RemoveServiceJob(%q)", j.Service.ToKey())
+}
+
+type CleanupJob struct{}
+
+func (j *CleanupJob) Run(w *Worker) (RequeueMode, error) {
+	if !w.AllowCleanups {
+		return RequeueTail, ErrCleanupBarrierActive
+	}
+
+	err := w.cleanupPorts()
+	if err != nil {
+		return RequeueTail, err
+	}
+	return Drop, nil
+}
+
+func (j *CleanupJob) ToString() string {
+	return "CleanupJob"
 }

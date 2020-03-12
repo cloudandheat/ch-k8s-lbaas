@@ -13,6 +13,20 @@ type MockPortMapper struct {
 	mock.Mock
 }
 
+func softCastStringArray(something interface{}) []string {
+	if something == nil {
+		return nil
+	}
+	return something.([]string)
+}
+
+func softCastServiceIdentifierArray(something interface{}) []model.ServiceIdentifier {
+	if something == nil {
+		return nil
+	}
+	return something.([]model.ServiceIdentifier)
+}
+
 func NewMockPortMapper() (*MockPortMapper) {
 	return new(MockPortMapper)
 }
@@ -39,10 +53,10 @@ func (m *MockPortMapper) GetLBConfiguration() error {
 
 func (m *MockPortMapper) GetUsedL3Ports() ([]string, error) {
 	a := m.Called()
-	return a.Get(0).([]string), a.Error(1)
+	return softCastStringArray(a.Get(0)), a.Error(1)
 }
 
 func (m *MockPortMapper) SetAvailableL3Ports(portIDs []string) ([]model.ServiceIdentifier, error) {
 	a := m.Called(portIDs)
-	return a.Get(0).([]model.ServiceIdentifier), a.Error(1)
+	return softCastServiceIdentifierArray(a.Get(0)), a.Error(1)
 }
