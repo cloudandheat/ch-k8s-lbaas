@@ -97,6 +97,7 @@ func (j *RemoveCleanupBarrierJob) ToString() string {
 	return "RemoveCleanupBarrier"
 }
 
+
 type SyncServiceJob struct {
 	Service model.ServiceIdentifier
 }
@@ -105,7 +106,8 @@ func (j *SyncServiceJob) Run(w *Worker) (RequeueMode, error) {
 	svc, err := w.servicesLister.Services(j.Service.Namespace).Get(j.Service.Name)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// TODO: unmap service
+			// We do nothing here. We expect the listener to provide us with a
+			// deleted event. The deleted event is handled differently.
 			return Drop, err
 		}
 		return RequeueTail, err
@@ -152,4 +154,22 @@ func (j *SyncServiceJob) Run(w *Worker) (RequeueMode, error) {
 
 func (j *SyncServiceJob) ToString() string {
 	return fmt.Sprintf("SyncServiceJob(%q)", j.Service.ToKey())
+}
+
+
+type RemoveServiceJob struct {
+	Service model.ServiceIdentifier
+	Annotations map[string]string
+}
+
+func (j *RemoveServiceJob) Run(w *Worker) (RequeueMode, error) {
+	err := w.portmapper.UnmapService(j.Service)
+	if err != nil {
+		return RequeueTail, err
+	}
+	return Drop, nil
+}
+
+func (j *RemoveServiceJob) ToString() string {
+	return fmt.Sprintf("RemoveServiceJob(%q)", j.Service.ToKey())
 }

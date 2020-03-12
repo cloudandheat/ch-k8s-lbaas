@@ -234,3 +234,48 @@ func TestSyncServiceRequeuesIfMapServiceFails(t *testing.T) {
 	assert.Equal(t, someError, err)
 	assert.Equal(t, RequeueTail, requeue)
 }
+
+func TestSyncServiceDoesNothingIfDeleted(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	// not calling f.addService yields the same error as a deleted service
+
+	j := &SyncServiceJob{model.FromService(s)}
+
+	_, requeue, _ := f.runExpectError(j)
+	assert.Equal(t, Drop, requeue)
+}
+
+func TestRemoveServiceUnmapsManagedService(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	// not calling f.addService yields the same error as a deleted service
+
+	f.portmapper.On("UnmapService", model.FromService(s)).Return(nil).Times(1)
+
+	j := &RemoveServiceJob{model.FromService(s), s.Annotations}
+
+	_, requeue := f.run(j)
+	assert.Equal(t, Drop, requeue)
+}
+
+func TestRemoveServiceRetiresIfUnmappingFails(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	// not calling f.addService yields the same error as a deleted service
+
+	someError := fmt.Errorf("a random error")
+	f.portmapper.On("UnmapService", model.FromService(s)).Return(someError).Times(1)
+
+	j := &RemoveServiceJob{model.FromService(s), s.Annotations}
+
+	_, requeue, err := f.runExpectError(j)
+	assert.Equal(t, RequeueTail, requeue)
+	assert.Equal(t, someError, err)
+}
