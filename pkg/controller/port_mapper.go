@@ -3,7 +3,6 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
@@ -15,33 +14,11 @@ import (
 var (
 	ErrServiceNotMapped = errors.New("Service not mapped")
 	ErrNoSuitablePort   = errors.New("No suitable port available")
-	ErrNotAValidKey     = errors.New("Not a valid namespace/name key")
 )
 
 const (
 	AnnotationInboundPort = "cah-loadbalancer.k8s.cloudandheat.com/inbound-port"
 )
-
-type ServiceIdentifier struct {
-	Namespace string
-	Name      string
-}
-
-func FromService(svc *corev1.Service) ServiceIdentifier {
-	return ServiceIdentifier{Namespace: svc.Namespace, Name: svc.Name}
-}
-
-func FromKey(key string) (ServiceIdentifier, error) {
-	parts := strings.SplitN(key, "/", 2)
-	if len(parts) != 2 {
-		return ServiceIdentifier{}, ErrNotAValidKey
-	}
-	return ServiceIdentifier{Namespace: parts[0], Name: parts[1]}, nil
-}
-
-func (id ServiceIdentifier) ToKey() string {
-	return fmt.Sprintf("%s/%s", id.Namespace, id.Name)
-}
 
 type PortMapper interface {
 	// Map the given service to a port
@@ -58,12 +35,12 @@ type PortMapper interface {
 	//
 	// Note that the release of ports can only be observed by polling
 	// GetUsedL3Ports.
-	UnmapService(id ServiceIdentifier) error
+	UnmapService(id model.ServiceIdentifier) error
 
 	// Return the ID of the port to which the service is mapped
 	//
 	// Returns ErrServiceNotMapped if the service is currently not mapped.
-	GetServiceL3Port(id ServiceIdentifier) (string, error)
+	GetServiceL3Port(id model.ServiceIdentifier) (string, error)
 
 	GetLBConfiguration() error
 
@@ -76,7 +53,7 @@ type PortMapper interface {
 	// Any service which is currently mapped to a port which is not in the list
 	// of IDs passed to this method will be unmapped. The identifiers of the
 	// affected services will be returned in the return value.
-	SetAvailableL3Ports(portIDs []string) ([]ServiceIdentifier, error)
+	SetAvailableL3Ports(portIDs []string) ([]model.ServiceIdentifier, error)
 }
 
 type PortMapperImpl struct {
@@ -94,7 +71,7 @@ func NewPortMapper(l3manager openstack.L3PortManager) PortMapper {
 }
 
 func (c *PortMapperImpl) getServiceKey(svc *corev1.Service) string {
-	return FromService(svc).ToKey()
+	return model.FromService(svc).ToKey()
 }
 
 func (c *PortMapperImpl) createNewL3Port() (string, error) {
@@ -203,7 +180,7 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 	return nil
 }
 
-func (c *PortMapperImpl) GetServiceL3Port(id ServiceIdentifier) (string, error) {
+func (c *PortMapperImpl) GetServiceL3Port(id model.ServiceIdentifier) (string, error) {
 	svcModel, ok := c.services[id.ToKey()]
 	if !ok {
 		return "", ErrServiceNotMapped
@@ -227,7 +204,7 @@ func (c *PortMapperImpl) GetUsedL3Ports() ([]string, error) {
 	return result, nil
 }
 
-func (c *PortMapperImpl) UnmapService(id ServiceIdentifier) error {
+func (c *PortMapperImpl) UnmapService(id model.ServiceIdentifier) error {
 	key := id.ToKey()
 	delete(c.services, key)
 	for _, l3port := range c.l3ports {
@@ -240,7 +217,7 @@ func (c *PortMapperImpl) UnmapService(id ServiceIdentifier) error {
 	return nil
 }
 
-func (c *PortMapperImpl) SetAvailableL3Ports(portIDs []string) ([]ServiceIdentifier, error) {
+func (c *PortMapperImpl) SetAvailableL3Ports(portIDs []string) ([]model.ServiceIdentifier, error) {
 	vlog := klog.V(4)
 
 	validPorts := make(map[string]bool)
@@ -252,7 +229,7 @@ func (c *PortMapperImpl) SetAvailableL3Ports(portIDs []string) ([]ServiceIdentif
 	}
 	vlog.Infof("%d ports are considered available", len(validPorts))
 
-	result := make([]ServiceIdentifier, 0)
+	result := make([]model.ServiceIdentifier, 0)
 	for portID, l3port := range c.l3ports {
 		// check if port is in the set of available ports
 		if _, ok := validPorts[portID]; ok {
@@ -273,7 +250,7 @@ func (c *PortMapperImpl) SetAvailableL3Ports(portIDs []string) ([]ServiceIdentif
 			// more than once if it has multiple allocations
 			if exists {
 				delete(c.services, serviceKey)
-				id, err := FromKey(serviceKey)
+				id, err := model.FromKey(serviceKey)
 				if err != nil {
 					panic(fmt.Sprintf("internal error: key %q is not valid", serviceKey))
 				}
