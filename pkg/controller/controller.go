@@ -264,23 +264,6 @@ func (c *Controller) handleObject(obj interface{}) {
 		return
 	}
 	c.enqueueJob(&SyncServiceJob{identifier})
-
-	/* if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
-		// If this object is not owned by a Foo, we should not do anything more
-		// with it.
-		if ownerRef.Kind != "Foo" {
-			return
-		}
-
-		foo, err := c.foosLister.Foos(object.GetNamespace()).Get(ownerRef.Name)
-		if err != nil {
-			klog.V(4).Infof("ignoring orphaned object '%s' of foo '%s'", object.GetSelfLink(), ownerRef.Name)
-			return
-		}
-
-		c.enqueueFoo(foo)
-		return
-	} */
 }
 
 func (c *Controller) deleteObject(obj interface{}) {
