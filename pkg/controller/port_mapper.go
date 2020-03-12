@@ -62,12 +62,12 @@ type PortMapper interface {
 	//
 	// Note that the release of ports can only be observed by polling
 	// GetUsedL3Ports.
-	UnmapService(svc *corev1.Service) error
+	UnmapService(id ServiceIdentifier) error
 
 	// Return the ID of the port to which the service is mapped
 	//
 	// Returns ErrServiceNotMapped if the service is currently not mapped.
-	GetServiceL3Port(svc *corev1.Service) (string, error)
+	GetServiceL3Port(id ServiceIdentifier) (string, error)
 
 	GetLBConfiguration() error
 
@@ -201,8 +201,8 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 	return nil
 }
 
-func (c *PortMapperImpl) GetServiceL3Port(svc *corev1.Service) (string, error) {
-	svcModel, ok := c.services[c.getServiceKey(svc)]
+func (c *PortMapperImpl) GetServiceL3Port(id ServiceIdentifier) (string, error) {
+	svcModel, ok := c.services[id.ToKey()]
 	if !ok {
 		return "", ErrServiceNotMapped
 	}
@@ -225,8 +225,8 @@ func (c *PortMapperImpl) GetUsedL3Ports() ([]string, error) {
 	return result, nil
 }
 
-func (c *PortMapperImpl) UnmapService(svc *corev1.Service) error {
-	key := c.getServiceKey(svc)
+func (c *PortMapperImpl) UnmapService(id ServiceIdentifier) error {
+	key := id.ToKey()
 	delete(c.services, key)
 	for _, l3port := range c.l3ports {
 		for portNumber, user := range l3port.Allocations {
