@@ -28,12 +28,14 @@ import (
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
 	"github.com/cloudandheat/cah-loadbalancer/pkg/controller"
+	"github.com/cloudandheat/cah-loadbalancer/pkg/openstack"
 	"github.com/cloudandheat/cah-loadbalancer/pkg/signals"
 )
 
 var (
-	masterURL  string
-	kubeconfig string
+	masterURL    string
+	kubeconfig   string
+	osConfigPath string
 )
 
 func main() {
@@ -55,8 +57,25 @@ func main() {
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 
-	lbcontroller := controller.NewController(kubeClient,
-		kubeInformerFactory.Core().V1().Services())
+	osConfig, err := openstack.ReadConfigFromFile(osConfigPath)
+	if err != nil {
+		klog.Fatalf("Failed reading OpenStack config: %s", err.Error())
+	}
+
+	osClient, err := openstack.NewClient(&osConfig.Global)
+	if err != nil {
+		klog.Fatalf("Failed to connect to OpenStack: %s", err.Error())
+	}
+
+	lbcontroller, err := controller.NewController(
+		kubeClient,
+		kubeInformerFactory.Core().V1().Services(),
+		osClient,
+		&osConfig,
+	)
+	if err != nil {
+		klog.Fatalf("Failed to configure controller: %s", err.Error())
+	}
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
@@ -70,4 +89,5 @@ func main() {
 func init() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
+	flag.StringVar(&osConfigPath, "os-config", "os-config.ini", "Path to an openstack config file.")
 }

@@ -34,6 +34,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
+
+	"github.com/cloudandheat/cah-loadbalancer/pkg/openstack"
 )
 
 const controllerAgentName = "cah-loadbalancer-controller"
@@ -68,12 +70,17 @@ type Controller struct {
 	// recorder is an event recorder for recording Event resources to the
 	// Kubernetes API.
 	recorder record.EventRecorder
+
+	portmapper PortMapper
 }
 
 // NewController returns a new sample controller
 func NewController(
 	kubeclientset kubernetes.Interface,
-	serviceInformer coreinformers.ServiceInformer) *Controller {
+	serviceInformer coreinformers.ServiceInformer,
+	osClient *openstack.OpenStackClient,
+	osConfig *openstack.Config,
+) (*Controller, error) {
 
 	// Create event broadcaster
 	// Add sample-controller types to the default Kubernetes Scheme so Events can be
@@ -84,12 +91,20 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
+	l3portmanager, err := osClient.NewOpenStackL3PortManager(
+		&osConfig.Networking,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	controller := &Controller{
 		kubeclientset:  kubeclientset,
 		servicesLister: serviceInformer.Lister(),
 		servicesSynced: serviceInformer.Informer().HasSynced,
 		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Foos"),
 		recorder:       recorder,
+		portmapper:     NewPortMapper(l3portmanager),
 	}
 
 	klog.Info("Setting up event handlers")
@@ -113,7 +128,7 @@ func NewController(
 		DeleteFunc: controller.handleObject,
 	})
 
-	return controller
+	return controller, nil
 }
 
 // Run will set up the event handlers for types we are interested in, as well
