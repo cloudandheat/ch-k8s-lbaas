@@ -145,13 +145,16 @@ func TestSyncServiceAddsManagedAnnotationIfMissing(t *testing.T) {
 	assert.Equal(t, Drop, requeue)
 }
 
-func TestSyncServiceRemovesManagedAnnotationIfNotManageable(t *testing.T) {
+func TestSyncServiceRemovesManagedAnnotationAndUnmapsIfNotManageable(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")
 	s.Spec.Type = "not-a-load-balancer"
 	s.Annotations = make(map[string]string)
 	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	setPortAnnotation(s, "some-random-port")
 	f.addService(s)
+
+	f.portmapper.On("UnmapService", model.FromService(s)).Return(nil).Times(1)
 
 	j := &SyncServiceJob{model.FromService(s)}
 

@@ -57,8 +57,11 @@ func (w *Worker) takeOverService(svcSrc *corev1.Service) error {
 }
 
 func (w *Worker) releaseService(svcSrc *corev1.Service) error {
+	w.portmapper.UnmapService(model.FromService(svcSrc))
+
 	svc := svcSrc.DeepCopy()
 	delete(svc.Annotations, AnnotationManaged)
+	clearPortAnnotation(svc)
 
 	klog.Infof("Releasing service %s/%s", svcSrc.Namespace, svcSrc.Name)
 
