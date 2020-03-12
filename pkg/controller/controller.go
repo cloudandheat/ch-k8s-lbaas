@@ -78,8 +78,7 @@ type Controller struct {
 func NewController(
 	kubeclientset kubernetes.Interface,
 	serviceInformer coreinformers.ServiceInformer,
-	osClient *openstack.OpenStackClient,
-	osConfig *openstack.Config,
+	l3portmanager openstack.L3PortManager,
 ) (*Controller, error) {
 
 	// Create event broadcaster
@@ -90,13 +89,6 @@ func NewController(
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
-
-	l3portmanager, err := osClient.NewOpenStackL3PortManager(
-		&osConfig.Networking,
-	)
-	if err != nil {
-		return nil, err
-	}
 
 	controller := &Controller{
 		kubeclientset:  kubeclientset,

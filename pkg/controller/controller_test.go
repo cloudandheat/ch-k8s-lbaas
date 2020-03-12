@@ -31,6 +31,9 @@ import (
 	core "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog"
+
+	ostesting "github.com/cloudandheat/cah-loadbalancer/pkg/openstack/testing"
 )
 
 var (
@@ -65,7 +68,14 @@ func (f *fixture) newController() (*Controller, kubeinformers.SharedInformerFact
 
 	k8sI := kubeinformers.NewSharedInformerFactory(f.kubeclient, noResyncPeriodFunc())
 
-	c := NewController(f.kubeclient, k8sI.Core().V1().Services())
+	c, err := NewController(
+		f.kubeclient,
+		k8sI.Core().V1().Services(),
+		ostesting.NewMockL3PortManager(),
+	)
+	if err != nil {
+		klog.Fatalf("failed to construct controller: %s", err.Error())
+	}
 
 	c.servicesSynced = alwaysReady
 	c.recorder = &record.FakeRecorder{}

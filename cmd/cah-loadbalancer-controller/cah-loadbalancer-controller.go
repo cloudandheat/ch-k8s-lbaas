@@ -67,11 +67,17 @@ func main() {
 		klog.Fatalf("Failed to connect to OpenStack: %s", err.Error())
 	}
 
+	l3portmanager, err := osClient.NewOpenStackL3PortManager(
+		&osConfig.Networking,
+	)
+	if err != nil {
+		klog.Fatalf("Failed to create L3 port manager: %s", err.Error())
+	}
+
 	lbcontroller, err := controller.NewController(
 		kubeClient,
 		kubeInformerFactory.Core().V1().Services(),
-		osClient,
-		&osConfig,
+		l3portmanager,
 	)
 	if err != nil {
 		klog.Fatalf("Failed to configure controller: %s", err.Error())

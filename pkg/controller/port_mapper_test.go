@@ -8,36 +8,17 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
+
+	ostesting "github.com/cloudandheat/cah-loadbalancer/pkg/openstack/testing"
 )
 
-// TODO: use mockery
-
-type L3PortManagerMock struct {
-	mock.Mock
-}
-
-func (m *L3PortManagerMock) ProvisionPort() (string, error) {
-	a := m.Called()
-	return a.String(0), a.Error(1)
-}
-
-func (m *L3PortManagerMock) CleanUnusedPorts(usedPorts []string) error {
-	a := m.Called(usedPorts)
-	return a.Error(0)
-}
-
-func NewL3PortManagerMock() *L3PortManagerMock {
-	return new(L3PortManagerMock)
-}
-
 type portMapperFixture struct {
-	l3portmanager *L3PortManagerMock
+	l3portmanager *ostesting.MockL3PortManager
 	portmapper    PortMapper
 }
 
 func newPortMapperFixture() *portMapperFixture {
-	l3portmanager := NewL3PortManagerMock()
+	l3portmanager := ostesting.NewMockL3PortManager()
 	return &portMapperFixture{
 		l3portmanager: l3portmanager,
 		portmapper:    NewPortMapper(l3portmanager),

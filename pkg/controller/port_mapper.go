@@ -9,6 +9,7 @@ import (
 	"k8s.io/klog"
 
 	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
+	"github.com/cloudandheat/cah-loadbalancer/pkg/openstack"
 )
 
 var (
@@ -20,11 +21,6 @@ var (
 const (
 	AnnotationInboundPort = "cah-loadbalancer.k8s.cloudandheat.com/inbound-port"
 )
-
-type L3PortManager interface {
-	ProvisionPort() (string, error)
-	CleanUnusedPorts(usedPorts []string) error
-}
 
 type ServiceIdentifier struct {
 	Namespace string
@@ -84,12 +80,12 @@ type PortMapper interface {
 }
 
 type PortMapperImpl struct {
-	l3manager L3PortManager
+	l3manager openstack.L3PortManager
 	services  map[string]model.ServiceModel
 	l3ports   map[string]model.L3Port
 }
 
-func NewPortMapper(l3manager L3PortManager) PortMapper {
+func NewPortMapper(l3manager openstack.L3PortManager) PortMapper {
 	return &PortMapperImpl{
 		l3manager: l3manager,
 		services:  make(map[string]model.ServiceModel),

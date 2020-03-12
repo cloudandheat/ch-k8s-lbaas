@@ -41,6 +41,12 @@ func (opts CustomCreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
 	return gophercloud.BuildRequestBody(opts, "port")
 }
 
+type L3PortManager interface {
+	ProvisionPort() (string, error)
+	CleanUnusedPorts(usedPorts []string) error
+	GetAvailablePorts() ([]string, error)
+}
+
 type OpenStackL3PortManager struct {
 	client    *gophercloud.ServiceClient
 	networkID string
