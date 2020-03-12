@@ -116,6 +116,8 @@ func (c *PortMapperImpl) emplaceL3Port(portID string) {
 	}
 }
 
+// An L3 port is suitable for a set of L4 port allocations if and only if it can
+// satisfy all of them.
 func (c *PortMapperImpl) isPortSuitableFor(l3port model.L3Port, ports []model.L4Port) bool {
 	for _, l4port := range ports {
 		if !l3port.L4PortFree(l4port) {
@@ -125,6 +127,10 @@ func (c *PortMapperImpl) isPortSuitableFor(l3port model.L3Port, ports []model.L4
 	return true
 }
 
+// Check if any of the managed L3 ports is suitable for the given set of L4
+// ports and return the first one which matches.
+//
+// If none matches, returns an ErrNoSuitablePort.
 func (c *PortMapperImpl) findL3PortFor(ports []model.L4Port) (string, error) {
 	for portID, l3port := range c.l3ports {
 		if c.isPortSuitableFor(l3port, ports) {
