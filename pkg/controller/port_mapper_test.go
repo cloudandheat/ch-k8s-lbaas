@@ -601,3 +601,40 @@ func TestSetAvailableL3PortsWithMissingPortOnlyEvictsAffectedService(t *testing.
 	assert.Nil(t, err)
 	assert.Equal(t, []string{"port-id-2"}, portIDs)
 }
+
+func TestMapServiceMakesServiceAppearInModel(t *testing.T) {
+	f := newPortMapperFixture()
+	s1 := newPortMapperService("test-service-1")
+	s1i := model.FromService(s1)
+	s1k := s1i.ToKey()
+	s2 := newPortMapperService("test-service-2")
+	s2i := model.FromService(s2)
+	s2k := s2i.ToKey()
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
+	f.l3portmanager.On("ProvisionPort").Return("port-id-2", nil).Times(1)
+
+	err := f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	err = f.portmapper.MapService(s2)
+	assert.Nil(t, err)
+
+	pmmodel := f.portmapper.GetModel()
+	assert.Contains(t, pmmodel, s1k)
+	assert.Contains(t, pmmodel, s2k)
+
+	s1p, err := f.portmapper.GetServiceL3Port(s1i)
+	assert.Nil(t, err)
+
+	s2p, err := f.portmapper.GetServiceL3Port(s2i)
+	assert.Nil(t, err)
+
+	port, ok := pmmodel[s1k]
+	assert.True(t, ok)
+	assert.Equal(t, s1p, port)
+
+	port, ok = pmmodel[s2k]
+	assert.True(t, ok)
+	assert.Equal(t, s2p, port)
+}

@@ -38,7 +38,7 @@ type PortMapper interface {
 	// Returns ErrServiceNotMapped if the service is currently not mapped.
 	GetServiceL3Port(id model.ServiceIdentifier) (string, error)
 
-	GetLBConfiguration() error
+	GetModel() map[string]string
 
 	// Return the list of IDs of the L3 ports which currently have at least one
 	// mapped service.
@@ -204,8 +204,12 @@ func (c *PortMapperImpl) GetServiceL3Port(id model.ServiceIdentifier) (string, e
 	return svcModel.L3PortID, nil
 }
 
-func (c *PortMapperImpl) GetLBConfiguration() error {
-	return fmt.Errorf("Not implemented")
+func (c *PortMapperImpl) GetModel() map[string]string {
+	result := make(map[string]string)
+	for key, svc := range c.services {
+		result[key] = svc.L3PortID
+	}
+	return result
 }
 
 func (c *PortMapperImpl) GetUsedL3Ports() ([]string, error) {

@@ -46,9 +46,13 @@ func (m *MockPortMapper) GetServiceL3Port(id model.ServiceIdentifier) (string, e
 	return a.String(0), a.Error(1)
 }
 
-func (m *MockPortMapper) GetLBConfiguration() error {
+func (m *MockPortMapper) GetModel() map[string]string {
 	a := m.Called()
-	return a.Error(0)
+	tmp := a.Get(0)
+	if tmp == nil {
+		return nil
+	}
+	return tmp.(map[string]string)
 }
 
 func (m *MockPortMapper) GetUsedL3Ports() ([]string, error) {
