@@ -142,7 +142,8 @@ func filterInformerActions(actions []core.Action) []core.Action {
 	for _, action := range actions {
 		if len(action.GetNamespace()) == 0 &&
 			(action.Matches("list", "services") ||
-				action.Matches("watch", "services")) {
+				action.Matches("watch", "services") ||
+				action.Matches("create", "event")) {
 			continue
 		}
 		ret = append(ret, action)

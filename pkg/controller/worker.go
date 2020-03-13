@@ -27,17 +27,23 @@ const (
 )
 
 const (
-	EventServiceTakenOver = "TakenOver"
-	EventServiceReleased  = "Released"
-	EventServiceMapped    = "Mapped"
-	EventServiceRemapped  = "Remapped"
-	EventServiceUnmapped  = "Unmapped"
+	EventServiceTakenOver              = "TakenOver"
+	EventServiceReleased               = "Released"
+	EventServiceMapped                 = "Mapped"
+	EventServiceRemapped               = "Remapped"
+	EventServiceAssigned               = "Assigned"
+	EventServiceUnassignedForRemapping = "UnassignedForRemapping"
+	EventServiceUnassignedStale        = "UnassignedStale"
+	EventServiceUnmapped               = "Unmapped"
 
-	MessageEventServiceTakenOver = "Service taken over by cah-loadbalancer-controller"
-	MessageEventServiceReleased  = "Service released by cah-loadbalancer-controller"
-	MessageEventServiceMapped    = "Service mapped to OpenStack port %q"
-	MessageEventServiceRemapped  = "Service mapping changed from port %q to %q (due to conflict)"
-	MessageEventServiceUnmapped  = "Service unmapped"
+	MessageEventServiceTakenOver              = "Service taken over by cah-loadbalancer-controller"
+	MessageEventServiceReleased               = "Service released by cah-loadbalancer-controller"
+	MessageEventServiceMapped                 = "Service mapped to OpenStack port %q"
+	MessageEventServiceAssigned               = "Service was assigned to the external IP address %q"
+	MessageEventServiceUnassignedForRemapping = "Service was unassigned due to upcoming port remapping"
+	MessageEventServiceUnassignedStale        = "Cleared stale IP address information"
+	MessageEventServiceRemapped               = "Service mapping changed from port %q to %q (due to conflict)"
+	MessageEventServiceUnmapped               = "Service unmapped"
 )
 
 var (
@@ -95,35 +101,85 @@ func (w *Worker) releaseService(svcSrc *corev1.Service) error {
 	return nil
 }
 
-func (w *Worker) mapService(svcSrc *corev1.Service) error {
-	err := w.portmapper.MapService(svcSrc)
-	if err != nil {
-		return err
+// Map the service using the port mapper
+//
+// - Return true and no error if the resource was updated.
+// - Return false and no error if the resource was not updated.
+// - Return an error mapping the service or updating the resource failed and it
+//   needs to be retired.
+//
+// This function will post the updated service to the k8s API.
+func (w *Worker) mapService(svcSrc *corev1.Service) (updated bool, err error) {
+	oldPortID := getPortAnnotation(svcSrc)
+	if oldPortID == "" && svcSrc.Status.LoadBalancer.Ingress != nil {
+		svc := svcSrc.DeepCopy()
+		svc.Status.LoadBalancer.Ingress = nil
+		_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(svc)
+		w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceUnassignedStale, MessageEventServiceUnassignedStale)
+		return true, err
 	}
 
 	id := model.FromService(svcSrc)
-	svc := svcSrc.DeepCopy()
+	err = w.portmapper.MapService(svcSrc)
+	if err != nil {
+		return false, err
+	}
+
 	newPortID, err := w.portmapper.GetServiceL3Port(id)
 	if err != nil {
-		return err
+		return false, err
 	}
-	oldPortID := getPortAnnotation(svc)
+
 	if oldPortID != newPortID {
-		setPortAnnotation(svc, newPortID)
+		svc := svcSrc.DeepCopy()
+		if svc.Status.LoadBalancer.Ingress == nil {
+			setPortAnnotation(svc, newPortID)
+			_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(svc)
 
-		_, err = w.kubeclientset.CoreV1().Services(id.Namespace).Update(svc)
-		if err != nil {
-			return err
-		}
-
-		if oldPortID != "" {
-			w.recorder.Event(svc, corev1.EventTypeWarning, EventServiceRemapped, fmt.Sprintf(MessageEventServiceRemapped, oldPortID, newPortID))
+			if oldPortID == "" {
+				w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceMapped, fmt.Sprintf(MessageEventServiceMapped, newPortID))
+			} else {
+				w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceRemapped, fmt.Sprintf(MessageEventServiceRemapped, oldPortID, newPortID))
+			}
 		} else {
-			w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceMapped, fmt.Sprintf(MessageEventServiceMapped, newPortID))
+			svc.Status.LoadBalancer.Ingress = nil
+			_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(svc)
+			w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceUnassignedForRemapping, MessageEventServiceUnassignedForRemapping)
 		}
+
+		return true, err
 	}
 
-	return nil
+	return false, err
+}
+
+// Update the load balancer status information
+//
+// - Return true and no error if the resource was updated.
+// - Return false and no error if the resource was not updated.
+// - Return an error retrieving the ingress information or updating the resource
+//   failed and it needs to be retired.
+//
+// This function will post the updated status to the k8s API.
+func (w *Worker) updateServiceStatus(svcSrc *corev1.Service) (updated bool, err error) {
+	portID := getPortAnnotation(svcSrc)
+	ipaddress, hostname, err := w.l3portmanager.GetExternalAddress(portID)
+	if err != nil {
+		return false, err
+	}
+
+	newIngress := corev1.LoadBalancerIngress{IP: ipaddress, Hostname: hostname}
+
+	if len(svcSrc.Status.LoadBalancer.Ingress) != 1 ||
+		svcSrc.Status.LoadBalancer.Ingress[0] != newIngress {
+		svc := svcSrc.DeepCopy()
+		svc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{newIngress}
+		_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(svc)
+		w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceAssigned, fmt.Sprintf(MessageEventServiceAssigned, newIngress.IP))
+		return true, err
+	}
+
+	return false, err
 }
 
 func (w *Worker) cleanupPorts() error {
@@ -211,10 +267,58 @@ func (j *SyncServiceJob) Run(w *Worker) (RequeueMode, error) {
 		return Drop, nil
 	}
 
-	err = w.mapService(svc)
+	// Issue:
+	// We cannot update the Status of the service in the same API call as we
+	// use to update the Metadata.
+	//
+	// At the same time, changing the Status changes the version of the Service,
+	// which means that we cannot do the two calls in sequence without fetching
+	// the Service in-between.
+	//
+	// Proposed flow:
+	//
+	// - input: service without port ID && without LB status
+	//   -> map to port
+	//   -> annotate port
+	// - input: service with port ID && without LB status
+	//   - if mapping does not change:
+	//     -> set LB status
+	//   - if mapping changes:
+	//     -> update port annotation
+	//     the next update will re-enter this branch until the mapping is
+	//     constant
+	// - input: service with port ID && with LB status
+	//   - if mapping does not change:
+	//     -> update LB status if needed
+	//   - if mapping changes:
+	//     -> clear LB status, leave annotation in place
+	//     the next update will go into the
+	//     "service with port ID && without LB status" branch which will change
+	//     the mapping annotation and set the LB status
+	//   benefit of this approach: the LB status is removed as soon as we know
+	//   that it is going to be stale
+	// - input: service without port ID && with LB status
+	//   -> clear LB status
+	//   the next update will deal with the mapping
+	//
+	// This is implemented by mapService refusing to do the update if there
+	// is an LB annotation and the port mapping would change from the one
+	// which is already on the resource; instead it removes the Ingress IP (and
+	// returns true to indicate that it updated the resource).
+
+	updated, err := w.mapService(svc)
 	if err != nil {
 		return RequeueTail, err
 	}
+	if updated {
+		return Drop, nil
+	}
+
+	updated, err = w.updateServiceStatus(svc)
+	if err != nil {
+		return RequeueTail, err
+	}
+
 	return Drop, nil
 }
 

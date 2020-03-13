@@ -28,3 +28,8 @@ func (m *MockL3PortManager) GetAvailablePorts() ([]string, error) {
 	a := m.Called()
 	return a.Get(0).([]string), a.Error(1)
 }
+
+func (m *MockL3PortManager) GetExternalAddress(portID string) (string, string, error) {
+	a := m.Called(portID)
+	return a.String(0), a.String(1), a.Error(2)
+}

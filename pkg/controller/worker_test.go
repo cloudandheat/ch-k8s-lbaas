@@ -64,6 +64,22 @@ func (f *workerFixture) runExpectError(j WorkerJob) (*Worker, RequeueMode, error
 }
 
 func (f *workerFixture) runWithChecksAndEnv(j WorkerJob, startInformers bool, expectError bool) (*Worker, RequeueMode, error) {
+	var requeueMode RequeueMode
+	var err error
+	w := f.runWith(startInformers, func(w *Worker) {
+		requeueMode, err = j.Run(w)
+	})
+
+	if !expectError && err != nil {
+		f.t.Errorf("error syncing foo: %v", err)
+	} else if expectError && err == nil {
+		f.t.Error("expected error syncing foo, got nil")
+	}
+
+	return w, requeueMode, err
+}
+
+func (f *workerFixture) runWith(startInformers bool, body func(w *Worker)) *Worker {
 	w, k8sI := f.newWorker()
 	if startInformers {
 		stopCh := make(chan struct{})
@@ -71,12 +87,7 @@ func (f *workerFixture) runWithChecksAndEnv(j WorkerJob, startInformers bool, ex
 		k8sI.Start(stopCh)
 	}
 
-	requeueMode, err := j.Run(w)
-	if !expectError && err != nil {
-		f.t.Errorf("error syncing foo: %v", err)
-	} else if expectError && err == nil {
-		f.t.Error("expected error syncing foo, got nil")
-	}
+	body(w)
 
 	k8sActions := filterInformerActions(f.kubeclient.Actions())
 	for i, action := range k8sActions {
@@ -96,7 +107,7 @@ func (f *workerFixture) runWithChecksAndEnv(j WorkerJob, startInformers bool, ex
 	f.portmapper.AssertExpectations(f.t)
 	f.l3portmanager.AssertExpectations(f.t)
 
-	return w, requeueMode, err
+	return w
 }
 
 func (f *workerFixture) expectCreateServiceAction(s *corev1.Service) {
@@ -105,6 +116,10 @@ func (f *workerFixture) expectCreateServiceAction(s *corev1.Service) {
 
 func (f *workerFixture) expectUpdateServiceAction(s *corev1.Service) {
 	f.kubeactions = append(f.kubeactions, core.NewUpdateAction(schema.GroupVersionResource{Resource: "services"}, s.Namespace, s))
+}
+
+func (f *workerFixture) expectUpdateServiceStatusAction(s *corev1.Service) {
+	f.kubeactions = append(f.kubeactions, core.NewUpdateSubresourceAction(schema.GroupVersionResource{Resource: "services"}, "status", s.Namespace, s))
 }
 
 func (f *workerFixture) addService(svc *corev1.Service) {
@@ -224,7 +239,7 @@ func TestSyncServiceCallsMapServiceForManagedServiceAndAnnotatesPort(t *testing.
 	assert.Equal(t, Drop, requeue)
 }
 
-func TestSyncServiceDoesNotUpdateServiceIfMappingHasNotChanged(t *testing.T) {
+func TestSyncServiceSetsLoadBalancerStatusOnUnchangedMapping(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")
 	s.Annotations = make(map[string]string)
@@ -234,27 +249,57 @@ func TestSyncServiceDoesNotUpdateServiceIfMappingHasNotChanged(t *testing.T) {
 
 	f.portmapper.On("MapService", s).Return(nil).Times(1)
 	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("random-port-id", nil).Times(1)
+	f.l3portmanager.On("GetExternalAddress", "random-port-id").Return("some-ip", "some-hostname", nil).Times(1)
 
 	j := &SyncServiceJob{model.FromService(s)}
+
+	updatedS := s.DeepCopy()
+	updatedS.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "some-ip", Hostname: "some-hostname"},
+	}
+	f.expectUpdateServiceStatusAction(updatedS)
 
 	_, requeue := f.run(j)
 	assert.Equal(t, Drop, requeue)
 }
 
-func TestSyncServiceUpdatesServiceIfMappingHasChanged(t *testing.T) {
+func TestSyncServiceRequeuesIfExternalAddressCannotBeObtained(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	setPortAnnotation(s, "random-port-id")
+	f.addService(s)
+
+	someError := fmt.Errorf("some error")
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("random-port-id", nil).Times(1)
+	f.l3portmanager.On("GetExternalAddress", "random-port-id").Return("", "", someError).Times(1)
+
+	j := &SyncServiceJob{model.FromService(s)}
+
+	_, requeue, err := f.runExpectError(j)
+	assert.Equal(t, someError, err)
+	assert.Equal(t, RequeueTail, requeue)
+}
+
+func TestSyncServiceClearsLoadBalancerStatusIfMappingHasChanged(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")
 	s.Annotations = make(map[string]string)
 	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
 	setPortAnnotation(s, "old-port-id")
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "old-ip", Hostname: "bork-hostname"},
+	}
 	f.addService(s)
 
 	f.portmapper.On("MapService", s).Return(nil).Times(1)
 	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("random-port-id", nil).Times(1)
 
 	updatedS := s.DeepCopy()
-	setPortAnnotation(updatedS, "random-port-id")
-	f.expectUpdateServiceAction(updatedS)
+	updatedS.Status.LoadBalancer.Ingress = nil
+	f.expectUpdateServiceStatusAction(updatedS)
 
 	j := &SyncServiceJob{model.FromService(s)}
 
@@ -386,4 +431,245 @@ func TestCleanupJobRetriesOnErrorFromPortmanager(t *testing.T) {
 	_, requeue, err := f.runExpectError(j)
 	assert.Equal(t, RequeueTail, requeue)
 	assert.Equal(t, someError, err)
+}
+
+func TestPmapServiceRemovesLBStatusAndReturnsTrueIfMappingChangesAndLBStatusIsPresent(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	setPortAnnotation(s, "old-port")
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: "ip", Hostname: "hostname"}}
+	f.addService(s)
+
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("new-port", nil).Times(1)
+
+	updatedS := s.DeepCopy()
+	updatedS.Status.LoadBalancer.Ingress = nil
+	f.expectUpdateServiceStatusAction(updatedS)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.mapService(s)
+		assert.Nil(t, err)
+		assert.True(t, updated)
+	})
+}
+
+func TestPmapServiceDoesNothingAndReturnsFalseIfMappingIsUnchangedAndLBStatusIsPresent(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	setPortAnnotation(s, "old-port")
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: "ip", Hostname: "hostname"}}
+	f.addService(s)
+
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("old-port", nil).Times(1)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.mapService(s)
+		assert.Nil(t, err)
+		assert.False(t, updated)
+	})
+}
+
+func TestPmapServiceUpdatesAnnotationAndReturnsTrueIfMappingChangesAndLBStatusIsNotPresent(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	setPortAnnotation(s, "old-port")
+	s.Status.LoadBalancer.Ingress = nil
+	f.addService(s)
+
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("new-port", nil).Times(1)
+
+	updatedS := s.DeepCopy()
+	setPortAnnotation(updatedS, "new-port")
+	f.expectUpdateServiceAction(updatedS)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.mapService(s)
+		assert.Nil(t, err)
+		assert.True(t, updated)
+	})
+}
+
+func TestPmapServiceUpdatesAnnotationAndReturnsTrueIfMappedAndLBStatusIsNotPresent(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	clearPortAnnotation(s)
+	s.Status.LoadBalancer.Ingress = nil
+	f.addService(s)
+
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("new-port", nil).Times(1)
+
+	updatedS := s.DeepCopy()
+	setPortAnnotation(updatedS, "new-port")
+	f.expectUpdateServiceAction(updatedS)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.mapService(s)
+		assert.Nil(t, err)
+		assert.True(t, updated)
+	})
+}
+
+func TestPmapServiceForwardsErrorFromMapService(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	clearPortAnnotation(s)
+	s.Status.LoadBalancer.Ingress = nil
+	f.addService(s)
+
+	someError := fmt.Errorf("some error")
+	f.portmapper.On("MapService", s).Return(someError).Times(1)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.mapService(s)
+		assert.Equal(t, someError, err)
+		assert.False(t, updated)
+	})
+}
+
+func TestPmapServiceForwardsErrorFromGetServiceL3Port(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	clearPortAnnotation(s)
+	s.Status.LoadBalancer.Ingress = nil
+	f.addService(s)
+
+	someError := fmt.Errorf("some error")
+	f.portmapper.On("MapService", s).Return(nil).Times(1)
+	f.portmapper.On("GetServiceL3Port", model.FromService(s)).Return("", someError).Times(1)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.mapService(s)
+		assert.Equal(t, someError, err)
+		assert.False(t, updated)
+	})
+}
+
+func TestPmapServiceRemovesLBStatusAndReturnsTrueIfUnmappedAndLBStatusIsPresent(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	clearPortAnnotation(s)
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: "ip", Hostname: "hostname"}}
+	f.addService(s)
+
+	updatedS := s.DeepCopy()
+	updatedS.Status.LoadBalancer.Ingress = nil
+	f.expectUpdateServiceStatusAction(updatedS)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.mapService(s)
+		assert.Nil(t, err)
+		assert.True(t, updated)
+	})
+}
+
+func TestPupdateServiceStatusSetsLBStatusFromPortAnnotationIfAbsent(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	setPortAnnotation(s, "some-port")
+	s.Status.LoadBalancer.Ingress = nil
+	f.addService(s)
+
+	f.l3portmanager.On("GetExternalAddress", "some-port").Return("port-ip", "port-hostname", nil).Times(1)
+
+	updatedS := s.DeepCopy()
+	updatedS.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "port-ip", Hostname: "port-hostname"},
+	}
+	f.expectUpdateServiceStatusAction(updatedS)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.updateServiceStatus(s)
+		assert.Nil(t, err)
+		assert.True(t, updated)
+	})
+}
+
+func TestPupdateServiceStatusSetsLBStatusFromPortAnnotationIfMismatching(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	setPortAnnotation(s, "some-port")
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "wrong-ip", Hostname: "port-hostname"},
+	}
+	f.addService(s)
+
+	f.l3portmanager.On("GetExternalAddress", "some-port").Return("port-ip", "port-hostname", nil).Times(1)
+
+	updatedS := s.DeepCopy()
+	updatedS.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "port-ip", Hostname: "port-hostname"},
+	}
+	f.expectUpdateServiceStatusAction(updatedS)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.updateServiceStatus(s)
+		assert.Nil(t, err)
+		assert.True(t, updated)
+	})
+}
+
+func TestPupdateServiceStatusSetsLBStatusFromPortAnnotationIfMoreThanOne(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	setPortAnnotation(s, "some-port")
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "port-ip", Hostname: "port-hostname"},
+		{IP: "other-ip", Hostname: "other-hostname"},
+	}
+	f.addService(s)
+
+	f.l3portmanager.On("GetExternalAddress", "some-port").Return("port-ip", "port-hostname", nil).Times(1)
+
+	updatedS := s.DeepCopy()
+	updatedS.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "port-ip", Hostname: "port-hostname"},
+	}
+	f.expectUpdateServiceStatusAction(updatedS)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.updateServiceStatus(s)
+		assert.Nil(t, err)
+		assert.True(t, updated)
+	})
+}
+
+func TestPupdateServiceStatusReturnsFalseIfStatusIsUpToDate(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	setPortAnnotation(s, "some-port")
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "port-ip", Hostname: "port-hostname"},
+	}
+	f.addService(s)
+
+	f.l3portmanager.On("GetExternalAddress", "some-port").Return("port-ip", "port-hostname", nil).Times(1)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.updateServiceStatus(s)
+		assert.Nil(t, err)
+		assert.False(t, updated)
+	})
+}
+
+func TestPupdateServiceStatusForwardsErrorFromGetExternalAddress(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	setPortAnnotation(s, "some-port")
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+		{IP: "port-ip", Hostname: "port-hostname"},
+	}
+	f.addService(s)
+
+	someError := fmt.Errorf("some error")
+	f.l3portmanager.On("GetExternalAddress", "some-port").Return("", "", someError).Times(1)
+
+	f.runWith(true, func(w *Worker) {
+		updated, err := w.updateServiceStatus(s)
+		assert.Equal(t, someError, err)
+		assert.False(t, updated)
+	})
 }

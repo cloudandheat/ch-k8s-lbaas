@@ -125,6 +125,9 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 	}
 
 	portID := getPortAnnotation(svc)
+	// TODO: also use the port we have stored locally, since the annotation
+	// may not be up-to-date if there was stale LoadBalancer Ingress information
+	// which had to be cleared
 	if portID != "" {
 		// the service has a preferred port
 		// TODO: retrieve port information from backend to ensure that it really

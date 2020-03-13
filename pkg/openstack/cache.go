@@ -27,7 +27,7 @@ type SimplePortCache struct {
 
 type PortCache interface {
 	GetPorts() ([]*portsv2.Port, error)
-	GetPortByID(ID string) (*portsv2.Port, error)
+	GetPortByID(ID string) (*portsv2.Port, *floatingipsv2.FloatingIP, error)
 	Invalidate()
 }
 
@@ -64,17 +64,17 @@ func (pc *SimplePortCache) GetPorts() ([]*portsv2.Port, error) {
 	return result, nil
 }
 
-func (pc *SimplePortCache) GetPortByID(ID string) (*portsv2.Port, error) {
+func (pc *SimplePortCache) GetPortByID(ID string) (*portsv2.Port, *floatingipsv2.FloatingIP, error) {
 	err := pc.refreshIfInvalid()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	port, ok := pc.ports[ID]
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return &port.Port, nil
+	return &port.Port, port.FloatingIP, nil
 }
 
 func (pc *SimplePortCache) refreshIfInvalid() error {

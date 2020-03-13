@@ -1,6 +1,7 @@
 package openstack
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gophercloud/gophercloud"
@@ -16,6 +17,11 @@ import (
 const (
 	TagLBManagedPort         = "cah-loadbalancer.k8s.cloudandheat.com/managed"
 	DescriptionLBManagedPort = "Managed by cah-loadbalancer"
+)
+
+var (
+	ErrFloatingIPMissing = errors.New("Expected floating IP was not found")
+	ErrFixedIPMissing    = errors.New("Port has no IP address assigned")
 )
 
 // We need options which are not included in the default gophercloud struct
@@ -45,6 +51,7 @@ type L3PortManager interface {
 	ProvisionPort() (string, error)
 	CleanUnusedPorts(usedPorts []string) error
 	GetAvailablePorts() ([]string, error)
+	GetExternalAddress(portID string) (string, string, error)
 }
 
 type OpenStackL3PortManager struct {
@@ -255,4 +262,25 @@ func (pm *OpenStackL3PortManager) GetAvailablePorts() ([]string, error) {
 		i += 1
 	}
 	return result, nil
+}
+
+func (pm *OpenStackL3PortManager) GetExternalAddress(portID string) (string, string, error) {
+	port, fip, err := pm.cache.GetPortByID(portID)
+	if err != nil {
+		return "", "", err
+	}
+
+	if pm.cfg.UseFloatingIPs {
+		if fip == nil {
+			return "", "", ErrFloatingIPMissing
+		}
+
+		return fip.FloatingIP, "", nil
+	}
+
+	if len(port.FixedIPs) == 0 {
+		return "", "", ErrFixedIPMissing
+	}
+
+	return port.FixedIPs[0].IPAddress, "", nil
 }
