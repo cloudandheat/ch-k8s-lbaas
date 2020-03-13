@@ -5,17 +5,23 @@ import (
 
 	"github.com/gophercloud/gophercloud"
 	portsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
+	floatingipsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
 	"github.com/gophercloud/gophercloud/pagination"
 
 	"k8s.io/klog"
 )
+
+type CachedPort struct {
+	Port portsv2.Port
+	FloatingIP *floatingipsv2.FloatingIP
+}
 
 type SimplePortCache struct {
 	client     *gophercloud.ServiceClient
 	opts       portsv2.ListOpts
 	validUntil time.Time
 	ttl        time.Duration
-	ports      map[string]*portsv2.Port
+	ports      map[string]*CachedPort
 }
 
 type PortCache interface {
@@ -50,7 +56,7 @@ func (pc *SimplePortCache) GetPorts() ([]*portsv2.Port, error) {
 	result := make([]*portsv2.Port, len(pc.ports))
 	i := 0
 	for _, v := range pc.ports {
-		result[i] = v
+		result[i] = &v.Port
 		i += 1
 	}
 	return result, nil
@@ -66,7 +72,7 @@ func (pc *SimplePortCache) GetPortByID(ID string) (*portsv2.Port, error) {
 	if !ok {
 		return nil, nil
 	}
-	return port, nil
+	return &port.Port, nil
 }
 
 func (pc *SimplePortCache) refreshIfInvalid() error {
@@ -80,16 +86,17 @@ func (pc *SimplePortCache) refreshIfInvalid() error {
 
 func (pc *SimplePortCache) forceRefresh() error {
 	pager := portsv2.List(pc.client, pc.opts)
-	entries := make(map[string]*portsv2.Port)
+	entries := make(map[string]*CachedPort)
 	err := pager.EachPage(func(page pagination.Page) (bool, error) {
 		ports, err := portsv2.ExtractPorts(page)
 		if err != nil {
 			return false, err
 		}
 		for _, port := range ports {
-			portCopy := &portsv2.Port{}
-			*portCopy = port
-			entries[port.ID] = portCopy
+			portEntry := &CachedPort{
+				Port: port,
+			}
+			entries[port.ID] = portEntry
 		}
 		return true, nil
 	})
