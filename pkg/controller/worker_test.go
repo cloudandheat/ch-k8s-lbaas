@@ -160,6 +160,27 @@ func TestSyncServiceAddsManagedAnnotationIfMissing(t *testing.T) {
 	assert.Equal(t, Drop, requeue)
 }
 
+func TestSyncServiceRemovesLoadBalancerStatusIfNotManageable(t *testing.T) {
+	f := newWorkerFixture(t)
+	s := newService("test-service")
+	s.Spec.Type = "not-a-load-balancer"
+	s.Annotations = make(map[string]string)
+	s.Annotations["cah-loadbalancer.k8s.cloudandheat.com/managed"] = "true"
+	setPortAnnotation(s, "some-random-port")
+	s.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{}
+	f.addService(s)
+
+	j := &SyncServiceJob{model.FromService(s)}
+
+	updatedS := s.DeepCopy()
+	updatedS.Status.LoadBalancer.Ingress = nil
+
+	f.expectUpdateServiceStatusAction(updatedS)
+
+	_, requeue := f.run(j)
+	assert.Equal(t, Drop, requeue)
+}
+
 func TestSyncServiceRemovesManagedAnnotationAndUnmapsIfNotManageable(t *testing.T) {
 	f := newWorkerFixture(t)
 	s := newService("test-service")

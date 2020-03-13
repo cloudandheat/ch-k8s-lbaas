@@ -42,6 +42,7 @@ const (
 	MessageEventServiceAssigned               = "Service was assigned to the external IP address %q"
 	MessageEventServiceUnassignedForRemapping = "Service was unassigned due to upcoming port remapping"
 	MessageEventServiceUnassignedStale        = "Cleared stale IP address information"
+	MessageEventServiceUnassignedDrop         = "Cleared IP address information because we release control over the Service"
 	MessageEventServiceRemapped               = "Service mapping changed from port %q to %q (due to conflict)"
 	MessageEventServiceUnmapped               = "Service unmapped"
 )
@@ -80,6 +81,21 @@ func (w *Worker) takeOverService(svcSrc *corev1.Service) error {
 }
 
 func (w *Worker) releaseService(svcSrc *corev1.Service) error {
+	if svcSrc.Status.LoadBalancer.Ingress != nil {
+		// we clear the Ingress status first so that the annotations will serve
+		// as a reminder that we need to do more cleanup, too
+		svc := svcSrc.DeepCopy()
+		svc.Status.LoadBalancer.Ingress = nil
+		_, err := w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(svc)
+
+		if err != nil {
+			return err
+		}
+
+		w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceUnassignedStale, MessageEventServiceUnassignedDrop)
+		return nil
+	}
+
 	oldPortID := getPortAnnotation(svcSrc)
 	w.portmapper.UnmapService(model.FromService(svcSrc))
 	if oldPortID != "" {
