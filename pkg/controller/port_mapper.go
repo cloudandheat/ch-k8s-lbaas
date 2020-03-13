@@ -124,10 +124,15 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 		svcModel.Ports[i] = model.L4Port{Protocol: k8sPort.Protocol, Port: k8sPort.Port}
 	}
 
-	portID := getPortAnnotation(svc)
-	// TODO: also use the port we have stored locally, since the annotation
-	// may not be up-to-date if there was stale LoadBalancer Ingress information
-	// which had to be cleared
+	existingSvc, hasExistingService := c.services[key]
+	var portID string
+	if hasExistingService {
+		portID = existingSvc.L3PortID
+	}
+	if portID == "" {
+		portID = getPortAnnotation(svc)
+	}
+
 	if portID != "" {
 		// the service has a preferred port
 		// TODO: retrieve port information from backend to ensure that it really
@@ -151,6 +156,9 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 		}
 	}
 
+	// TODO: if the port we have in our internal state is not suited for some
+	// reason, try the port from the annotation
+
 	// if the service did not give us a specific port to use, we have to look
 	// further
 	if portID == "" {
@@ -171,8 +179,7 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 
 	svcModel.L3PortID = portID
 
-	_, ok := c.services[key]
-	if ok {
+	if hasExistingService {
 		// we have to unmap the existing service first
 		err = c.UnmapService(id)
 		if err != nil {
