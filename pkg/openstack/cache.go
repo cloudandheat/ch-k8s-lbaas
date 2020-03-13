@@ -4,24 +4,25 @@ import (
 	"time"
 
 	"github.com/gophercloud/gophercloud"
-	portsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	floatingipsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
+	portsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/pagination"
 
 	"k8s.io/klog"
 )
 
 type CachedPort struct {
-	Port portsv2.Port
+	Port       portsv2.Port
 	FloatingIP *floatingipsv2.FloatingIP
 }
 
 type SimplePortCache struct {
-	client     *gophercloud.ServiceClient
-	opts       portsv2.ListOpts
-	validUntil time.Time
-	ttl        time.Duration
-	ports      map[string]*CachedPort
+	client         *gophercloud.ServiceClient
+	tag            string
+	useFloatingIPs bool
+	validUntil     time.Time
+	ttl            time.Duration
+	ports          map[string]*CachedPort
 }
 
 type PortCache interface {
@@ -30,20 +31,21 @@ type PortCache interface {
 	Invalidate()
 }
 
-func (client *OpenStackClient) NewPortCache(ttl time.Duration, opts portsv2.ListOpts) (*SimplePortCache, error) {
+func (client *OpenStackClient) NewPortCache(ttl time.Duration, tag string, useFloatingIPs bool) (*SimplePortCache, error) {
 	networkingclient, err := client.NewNetworkV2()
 	if err != nil {
 		return nil, err
 	}
 
-	return NewPortCache(networkingclient, ttl, opts), nil
+	return NewPortCache(networkingclient, ttl, tag, useFloatingIPs), nil
 }
 
-func NewPortCache(networkingclient *gophercloud.ServiceClient, ttl time.Duration, opts portsv2.ListOpts) *SimplePortCache {
+func NewPortCache(networkingclient *gophercloud.ServiceClient, ttl time.Duration, tag string, useFloatingIPs bool) *SimplePortCache {
 	return &SimplePortCache{
-		client: networkingclient,
-		ttl:    ttl,
-		opts:   opts,
+		client:         networkingclient,
+		ttl:            ttl,
+		tag:            tag,
+		useFloatingIPs: useFloatingIPs,
 	}
 }
 
@@ -85,9 +87,40 @@ func (pc *SimplePortCache) refreshIfInvalid() error {
 }
 
 func (pc *SimplePortCache) forceRefresh() error {
-	pager := portsv2.List(pc.client, pc.opts)
+	// port ID -> FloatingIP, *NOT* floating IP ID -> FloatingIP
+	var fipEntries map[string]*floatingipsv2.FloatingIP = nil
+	if pc.useFloatingIPs {
+		fipEntries = make(map[string]*floatingipsv2.FloatingIP)
+		err := floatingipsv2.List(
+			pc.client,
+			floatingipsv2.ListOpts{Tags: pc.tag},
+		).EachPage(func(page pagination.Page) (bool, error) {
+			fips, err := floatingipsv2.ExtractFloatingIPs(page)
+			if err != nil {
+				return false, err
+			}
+			for _, fip := range fips {
+				if fip.PortID == "" {
+					continue
+				}
+				fipCopy := &floatingipsv2.FloatingIP{}
+				*fipCopy = fip
+				fipEntries[fip.PortID] = fipCopy
+			}
+			return true, nil
+		})
+		// if floating IPs are enabled, not being able to fetch them is actually
+		// fatal for the refresh operation.
+		if err != nil {
+			return err
+		}
+	}
+
 	entries := make(map[string]*CachedPort)
-	err := pager.EachPage(func(page pagination.Page) (bool, error) {
+	err := portsv2.List(
+		pc.client,
+		portsv2.ListOpts{Tags: pc.tag},
+	).EachPage(func(page pagination.Page) (bool, error) {
 		ports, err := portsv2.ExtractPorts(page)
 		if err != nil {
 			return false, err
@@ -95,6 +128,9 @@ func (pc *SimplePortCache) forceRefresh() error {
 		for _, port := range ports {
 			portEntry := &CachedPort{
 				Port: port,
+			}
+			if fipEntries != nil {
+				portEntry.FloatingIP = fipEntries[port.ID]
 			}
 			entries[port.ID] = portEntry
 		}

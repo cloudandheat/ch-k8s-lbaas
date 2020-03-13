@@ -74,9 +74,8 @@ func (client *OpenStackClient) NewOpenStackL3PortManager(networkConfig *Networki
 		cache: NewPortCache(
 			networkingclient,
 			30*time.Second,
-			portsv2.ListOpts{
-				Tags: TagLBManagedPort,
-			},
+			TagLBManagedPort,
+			networkConfig.UseFloatingIPs,
 		),
 	}, nil
 }
