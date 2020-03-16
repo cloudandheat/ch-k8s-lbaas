@@ -27,15 +27,16 @@ import (
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
+	"github.com/cloudandheat/cah-loadbalancer/pkg/config"
 	"github.com/cloudandheat/cah-loadbalancer/pkg/controller"
 	"github.com/cloudandheat/cah-loadbalancer/pkg/openstack"
 	"github.com/cloudandheat/cah-loadbalancer/pkg/signals"
 )
 
 var (
-	masterURL    string
-	kubeconfig   string
-	osConfigPath string
+	masterURL  string
+	kubeconfig string
+	configPath string
 )
 
 func main() {
@@ -57,18 +58,18 @@ func main() {
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 
-	osConfig, err := openstack.ReadConfigFromFile(osConfigPath)
+	fileCfg, err := config.ReadControllerConfigFromFile(configPath)
 	if err != nil {
-		klog.Fatalf("Failed reading OpenStack config: %s", err.Error())
+		klog.Fatalf("Failed reading config: %s", err.Error())
 	}
 
-	osClient, err := openstack.NewClient(&osConfig.Global)
+	osClient, err := openstack.NewClient(&fileCfg.OpenStack.Global)
 	if err != nil {
 		klog.Fatalf("Failed to connect to OpenStack: %s", err.Error())
 	}
 
 	l3portmanager, err := osClient.NewOpenStackL3PortManager(
-		&osConfig.Networking,
+		&fileCfg.OpenStack.Networking,
 	)
 	if err != nil {
 		klog.Fatalf("Failed to create L3 port manager: %s", err.Error())
@@ -96,5 +97,5 @@ func main() {
 func init() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
-	flag.StringVar(&osConfigPath, "os-config", "os-config.ini", "Path to an openstack config file.")
+	flag.StringVar(&configPath, "config", "controller-config.toml", "Path to the controller config file.")
 }
