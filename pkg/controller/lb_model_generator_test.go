@@ -97,6 +97,39 @@ func (f *generatorFixture) runWith(body func(g *DefaultLoadBalancerModelGenerato
 	f.l3portmanager.AssertExpectations(f.t)
 }
 
+func anyIngressIP(t *testing.T, items []model.IngressIP, address string, testfunc func(t *testing.T, i model.IngressIP)) {
+	assert.Conditionf(t, func() bool {
+		for _, item := range items {
+			if item.Address != address {
+				continue
+			}
+			testfunc(t, item)
+			return true
+		}
+		return false
+	}, "no Ingress found for address %s in %#v", address, items)
+}
+
+func anyPort(t *testing.T, items []model.PortForward, inboundPort int32, protocol corev1.Protocol, testfunc func(t *testing.T, p model.PortForward)) {
+	assert.Conditionf(t, func() bool {
+		for _, item := range items {
+			if item.InboundPort != inboundPort || item.Protocol != protocol {
+				continue
+			}
+			testfunc(t, item)
+			return true
+		}
+		return false
+	}, "no PortForward found for %d/%s in %#v", inboundPort, protocol, items)
+}
+
+func (f *generatorFixture) matchDestinationAddresses(p model.PortForward) {
+	assert.Equal(f.t, len(f.nodeLister), len(p.DestinationAddresses))
+	for _, node := range f.nodeLister {
+		assert.Contains(f.t, p.DestinationAddresses, node.Status.Addresses[1].Address)
+	}
+}
+
 func TestReturnsEmptyModelForEmptyAssignment(t *testing.T) {
 	f := newGeneratorFixture(t)
 
@@ -140,19 +173,15 @@ func TestSinglePortSingleServiceAssignment(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.Equal(t, 1, len(m.Ingress))
 
-		i := m.Ingress[0]
-		assert.Equal(t, "external-ip-1", i.Address)
-		assert.Equal(t, 1, len(i.Ports))
+		anyIngressIP(t, m.Ingress, "external-ip-1", func(t *testing.T, i model.IngressIP) {
+			assert.Equal(t, 1, len(i.Ports))
 
-		p := i.Ports[0]
-		assert.Equal(t, corev1.ProtocolTCP, p.Protocol)
-		assert.Equal(t, int32(80), p.InboundPort)
-		assert.Equal(t, int32(31234), p.DestinationPort)
+			anyPort(t, i.Ports, 80, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31234), p.DestinationPort)
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+				f.matchDestinationAddresses(p)
+			})
+		})
 	})
 }
 
@@ -185,41 +214,27 @@ func TestSinglePortMultiServiceAssignment(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.Equal(t, 1, len(m.Ingress))
 
-		i := m.Ingress[0]
-		assert.Equal(t, "external-ip-1", i.Address)
-		assert.Equal(t, 3, len(i.Ports))
+		anyIngressIP(t, m.Ingress, "external-ip-1", func(t *testing.T, i model.IngressIP) {
+			assert.Equal(t, 3, len(i.Ports))
 
-		var p model.PortForward
+			anyPort(t, i.Ports, 53, corev1.ProtocolUDP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31236), p.DestinationPort)
 
-		p = i.Ports[0]
-		assert.Equal(t, corev1.ProtocolUDP, p.Protocol)
-		assert.Equal(t, int32(53), p.InboundPort)
-		assert.Equal(t, int32(31236), p.DestinationPort)
+				f.matchDestinationAddresses(p)
+			})
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+			anyPort(t, i.Ports, 80, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31234), p.DestinationPort)
 
-		p = i.Ports[1]
-		assert.Equal(t, corev1.ProtocolTCP, p.Protocol)
-		assert.Equal(t, int32(80), p.InboundPort)
-		assert.Equal(t, int32(31234), p.DestinationPort)
+				f.matchDestinationAddresses(p)
+			})
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+			anyPort(t, i.Ports, 443, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31235), p.DestinationPort)
 
-		p = i.Ports[2]
-		assert.Equal(t, corev1.ProtocolTCP, p.Protocol)
-		assert.Equal(t, int32(443), p.InboundPort)
-		assert.Equal(t, int32(31235), p.DestinationPort)
-
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+				f.matchDestinationAddresses(p)
+			})
+		})
 	})
 }
 
@@ -253,47 +268,31 @@ func TestMultiPortSingleServiceAssignment(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.Equal(t, 2, len(m.Ingress))
 
-		var i model.IngressIP
+		anyIngressIP(t, m.Ingress, "external-ip-1", func(t *testing.T, i model.IngressIP) {
+			assert.Equal(t, 2, len(i.Ports))
 
-		i = m.Ingress[0]
-		assert.Equal(t, "external-ip-1", i.Address)
-		assert.Equal(t, 2, len(i.Ports))
+			anyPort(t, i.Ports, 80, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31234), p.DestinationPort)
 
-		var p model.PortForward
+				f.matchDestinationAddresses(p)
+			})
 
-		p = i.Ports[0]
-		assert.Equal(t, corev1.ProtocolTCP, p.Protocol)
-		assert.Equal(t, int32(80), p.InboundPort)
-		assert.Equal(t, int32(31234), p.DestinationPort)
+			anyPort(t, i.Ports, 443, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31235), p.DestinationPort)
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+				f.matchDestinationAddresses(p)
+			})
+		})
 
-		p = i.Ports[1]
-		assert.Equal(t, corev1.ProtocolTCP, p.Protocol)
-		assert.Equal(t, int32(443), p.InboundPort)
-		assert.Equal(t, int32(31235), p.DestinationPort)
+		anyIngressIP(t, m.Ingress, "external-ip-2", func(t *testing.T, i model.IngressIP) {
+			assert.Equal(t, 1, len(i.Ports))
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+			anyPort(t, i.Ports, 53, corev1.ProtocolUDP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31236), p.DestinationPort)
 
-		i = m.Ingress[1]
-		assert.Equal(t, "external-ip-2", i.Address)
-		assert.Equal(t, 1, len(i.Ports))
-
-		p = i.Ports[0]
-		assert.Equal(t, corev1.ProtocolUDP, p.Protocol)
-		assert.Equal(t, int32(53), p.InboundPort)
-		assert.Equal(t, int32(31236), p.DestinationPort)
-
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+				f.matchDestinationAddresses(p)
+			})
+		})
 	})
 }
 
@@ -310,6 +309,7 @@ func TestMultiPortMultiServiceAssignment(t *testing.T) {
 	svc2 := newService("svc-2")
 	svc2.Spec.Ports = []corev1.ServicePort{
 		{Port: 53, NodePort: 31236, Protocol: corev1.ProtocolUDP},
+		{Port: 53, NodePort: 31236, Protocol: corev1.ProtocolTCP},
 	}
 	f.addService(svc2)
 
@@ -334,56 +334,42 @@ func TestMultiPortMultiServiceAssignment(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.Equal(t, 2, len(m.Ingress))
 
-		var i model.IngressIP
+		anyIngressIP(t, m.Ingress, "external-ip-1", func(t *testing.T, i model.IngressIP) {
+			assert.Equal(t, 2, len(i.Ports))
 
-		i = m.Ingress[0]
-		assert.Equal(t, "external-ip-1", i.Address)
-		assert.Equal(t, 2, len(i.Ports))
+			anyPort(t, i.Ports, 80, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31234), p.DestinationPort)
 
-		var p model.PortForward
+				f.matchDestinationAddresses(p)
+			})
 
-		p = i.Ports[0]
-		assert.Equal(t, corev1.ProtocolTCP, p.Protocol)
-		assert.Equal(t, int32(80), p.InboundPort)
-		assert.Equal(t, int32(31234), p.DestinationPort)
+			anyPort(t, i.Ports, 443, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31235), p.DestinationPort)
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+				f.matchDestinationAddresses(p)
+			})
+		})
 
-		p = i.Ports[1]
-		assert.Equal(t, corev1.ProtocolTCP, p.Protocol)
-		assert.Equal(t, int32(443), p.InboundPort)
-		assert.Equal(t, int32(31235), p.DestinationPort)
+		anyIngressIP(t, m.Ingress, "external-ip-2", func(t *testing.T, i model.IngressIP) {
+			assert.Equal(t, 3, len(i.Ports))
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+			anyPort(t, i.Ports, 53, corev1.ProtocolUDP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31236), p.DestinationPort)
 
-		i = m.Ingress[1]
-		assert.Equal(t, "external-ip-2", i.Address)
-		assert.Equal(t, 2, len(i.Ports))
+				f.matchDestinationAddresses(p)
+			})
 
-		p = i.Ports[0]
-		assert.Equal(t, corev1.ProtocolUDP, p.Protocol)
-		assert.Equal(t, int32(53), p.InboundPort)
-		assert.Equal(t, int32(31236), p.DestinationPort)
+			anyPort(t, i.Ports, 53, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31236), p.DestinationPort)
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+				f.matchDestinationAddresses(p)
+			})
 
-		p = i.Ports[1]
-		assert.Equal(t, corev1.ProtocolTCP, p.Protocol)
-		assert.Equal(t, int32(9090), p.InboundPort)
-		assert.Equal(t, int32(31237), p.DestinationPort)
+			anyPort(t, i.Ports, 9090, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
+				assert.Equal(t, int32(31237), p.DestinationPort)
 
-		assert.Equal(t, len(f.nodeLister), len(p.DestinationAddresses))
-		for _, node := range f.nodeLister {
-			assert.Contains(t, p.DestinationAddresses, node.Status.Addresses[1].Address)
-		}
+				f.matchDestinationAddresses(p)
+			})
+		})
 	})
 }
