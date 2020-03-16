@@ -71,6 +71,7 @@ func (f *fixture) newController() (*Controller, kubeinformers.SharedInformerFact
 	c, err := NewController(
 		f.kubeclient,
 		k8sI.Core().V1().Services(),
+		k8sI.Core().V1().Nodes(),
 		ostesting.NewMockL3PortManager(),
 	)
 	if err != nil {

@@ -59,6 +59,7 @@ type Worker struct {
 	servicesLister corelisters.ServiceLister
 	kubeclientset  kubernetes.Interface
 	recorder       record.EventRecorder
+	generator      LoadBalancerModelGenerator
 
 	workqueue workqueue.RateLimitingInterface
 
@@ -220,7 +221,8 @@ func NewWorker(
 	l3portmanager openstack.L3PortManager,
 	portmapper PortMapper,
 	kubeclientset kubernetes.Interface,
-	services corelisters.ServiceLister) *Worker {
+	services corelisters.ServiceLister,
+	generator LoadBalancerModelGenerator) *Worker {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
@@ -233,6 +235,7 @@ func NewWorker(
 		kubeclientset:  kubeclientset,
 		servicesLister: services,
 		recorder:       recorder,
+		generator:      generator,
 		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Jobs"),
 		AllowCleanups:  false,
 	}
@@ -412,6 +415,7 @@ func (j *SyncServiceJob) Run(w *Worker) (RequeueMode, error) {
 		return RequeueTail, err
 	}
 
+	w.EnqueueJob(&UpdateConfigJob{})
 	return Drop, nil
 }
 
@@ -436,6 +440,9 @@ func (j *RemoveServiceJob) Run(w *Worker) (RequeueMode, error) {
 	if err != nil {
 		return RequeueTail, err
 	}
+
+	w.EnqueueJob(&CleanupJob{})
+	w.EnqueueJob(&UpdateConfigJob{})
 	return Drop, nil
 }
 
@@ -459,4 +466,14 @@ func (j *CleanupJob) Run(w *Worker) (RequeueMode, error) {
 
 func (j *CleanupJob) ToString() string {
 	return "CleanupJob"
+}
+
+type UpdateConfigJob struct{}
+
+func (j *UpdateConfigJob) Run(w *Worker) (RequeueMode, error) {
+	return Drop, nil
+}
+
+func (j *UpdateConfigJob) ToString() string {
+	return "UpdateConfigJob"
 }

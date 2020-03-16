@@ -10,7 +10,7 @@ type MockL3PortManager struct {
 	mock.Mock
 }
 
-func NewMockL3PortManager() (*MockL3PortManager) {
+func NewMockL3PortManager() *MockL3PortManager {
 	return new(MockL3PortManager)
 }
 

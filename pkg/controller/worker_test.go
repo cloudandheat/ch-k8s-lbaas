@@ -28,6 +28,7 @@ type workerFixture struct {
 
 	l3portmanager *ostesting.MockL3PortManager
 	portmapper    *controllertesting.MockPortMapper
+	generator     *controllertesting.MockLoadBalancerModelGenerator
 
 	willAllowCleanups bool
 }
@@ -37,6 +38,7 @@ func newWorkerFixture(t *testing.T) *workerFixture {
 	f.t = t
 	f.l3portmanager = ostesting.NewMockL3PortManager()
 	f.portmapper = controllertesting.NewMockPortMapper()
+	f.generator = controllertesting.NewMockLoadBalancerModelGenerator()
 	f.kubeobjects = []runtime.Object{}
 	return f
 }
@@ -49,7 +51,7 @@ func (f *workerFixture) newWorker() (*Worker, kubeinformers.SharedInformerFactor
 		k8sI.Core().V1().Services().Informer().GetIndexer().Add(s)
 	}
 
-	w := NewWorker(f.l3portmanager, f.portmapper, f.kubeclient, k8sI.Core().V1().Services().Lister())
+	w := NewWorker(f.l3portmanager, f.portmapper, f.kubeclient, k8sI.Core().V1().Services().Lister(), f.generator)
 	w.AllowCleanups = f.willAllowCleanups
 	return w, k8sI
 }

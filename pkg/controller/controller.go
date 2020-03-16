@@ -76,6 +76,7 @@ type Controller struct {
 func NewController(
 	kubeclientset kubernetes.Interface,
 	serviceInformer coreinformers.ServiceInformer,
+	nodeInformer coreinformers.NodeInformer,
 	l3portmanager openstack.L3PortManager,
 ) (*Controller, error) {
 
@@ -89,6 +90,11 @@ func NewController(
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	portmapper := NewPortMapper(l3portmanager)
+	generator := NewDefaultLoadBalancerModelGenerator(
+		l3portmanager,
+		serviceInformer.Lister(),
+		nodeInformer.Lister(),
+	)
 
 	controller := &Controller{
 		kubeclientset:  kubeclientset,
@@ -96,7 +102,7 @@ func NewController(
 		servicesSynced: serviceInformer.Informer().HasSynced,
 		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Jobs"),
 		recorder:       recorder,
-		worker:         NewWorker(l3portmanager, portmapper, kubeclientset, serviceInformer.Lister()),
+		worker:         NewWorker(l3portmanager, portmapper, kubeclientset, serviceInformer.Lister(), generator),
 	}
 
 	klog.Info("Setting up event handlers")

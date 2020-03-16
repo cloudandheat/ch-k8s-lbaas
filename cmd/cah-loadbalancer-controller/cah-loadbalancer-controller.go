@@ -77,6 +77,7 @@ func main() {
 	lbcontroller, err := controller.NewController(
 		kubeClient,
 		kubeInformerFactory.Core().V1().Services(),
+		kubeInformerFactory.Core().V1().Nodes(),
 		l3portmanager,
 	)
 	if err != nil {

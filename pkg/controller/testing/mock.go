@@ -3,13 +3,17 @@ package testing
 import (
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
+	"github.com/stretchr/testify/mock"
 )
 
 // TODO: use mockery
 
 type MockPortMapper struct {
+	mock.Mock
+}
+
+type MockLoadBalancerModelGenerator struct {
 	mock.Mock
 }
 
@@ -27,7 +31,7 @@ func softCastServiceIdentifierArray(something interface{}) []model.ServiceIdenti
 	return something.([]model.ServiceIdentifier)
 }
 
-func NewMockPortMapper() (*MockPortMapper) {
+func NewMockPortMapper() *MockPortMapper {
 	return new(MockPortMapper)
 }
 
@@ -63,4 +67,13 @@ func (m *MockPortMapper) GetUsedL3Ports() ([]string, error) {
 func (m *MockPortMapper) SetAvailableL3Ports(portIDs []string) ([]model.ServiceIdentifier, error) {
 	a := m.Called(portIDs)
 	return softCastServiceIdentifierArray(a.Get(0)), a.Error(1)
+}
+
+func NewMockLoadBalancerModelGenerator() *MockLoadBalancerModelGenerator {
+	return new(MockLoadBalancerModelGenerator)
+}
+
+func (m *MockLoadBalancerModelGenerator) GenerateModel(portAssignment map[string]string) (*model.LoadBalancer, error) {
+	a := m.Called(portAssignment)
+	return a.Get(0).(*model.LoadBalancer), a.Error(1)
 }
