@@ -7,11 +7,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	corev1 "k8s.io/api/core/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
 	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
@@ -57,6 +59,8 @@ type Worker struct {
 	servicesLister corelisters.ServiceLister
 	kubeclientset  kubernetes.Interface
 	recorder       record.EventRecorder
+
+	workqueue workqueue.RateLimitingInterface
 
 	AllowCleanups bool
 }
@@ -229,8 +233,81 @@ func NewWorker(
 		kubeclientset:  kubeclientset,
 		servicesLister: services,
 		recorder:       recorder,
+		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Jobs"),
 		AllowCleanups:  false,
 	}
+}
+
+func (w *Worker) EnqueueJob(j WorkerJob) {
+	w.workqueue.Add(j)
+}
+
+func (w *Worker) RequeueJob(j WorkerJob) {
+	w.workqueue.AddRateLimited(j)
+}
+
+func (w *Worker) ShutDown() {
+	w.workqueue.ShutDown()
+}
+
+func (w *Worker) Run() {
+	klog.Infof("Worker started")
+	for w.processNextJob() {
+	}
+}
+
+func (w *Worker) executeJob(job WorkerJob) error {
+	defer w.workqueue.Done(job)
+
+	requeue, err := job.Run(w)
+	if err != nil {
+		if requeue != Drop {
+			return fmt.Errorf(
+				"error processing job %s: %s; requeueing",
+				job.ToString(), err.Error(),
+			)
+		} else {
+			return fmt.Errorf(
+				"error processing job %s: %s; dropping",
+				job.ToString(), err.Error(),
+			)
+		}
+	}
+
+	if requeue != Drop {
+		w.workqueue.AddRateLimited(job)
+	} else {
+		w.workqueue.Forget(job)
+	}
+
+	klog.Infof("Successfully executed job %s", job.ToString())
+	return nil
+}
+
+func (w *Worker) processNextJob() bool {
+	jobInterface, shutdown := w.workqueue.Get()
+	if shutdown {
+		return false
+	}
+
+	job, ok := jobInterface.(WorkerJob)
+	// We have to call workqueue.Done for all jobs, even those we Forget.
+	// executeJob will call Done itself, so we don’t use defer here.
+	if !ok {
+		w.workqueue.Forget(job)
+		w.workqueue.Done(job)
+		utilruntime.HandleError(fmt.Errorf(
+			"expected WorkerJob in queue, but got %#v", jobInterface,
+		))
+		return true
+	}
+
+	err := w.executeJob(job)
+	if err != nil {
+		utilruntime.HandleError(err)
+	}
+
+	return true
 }
 
 type WorkerJob interface {
