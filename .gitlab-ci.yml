@@ -1,0 +1,17 @@
+stages:
+- lint
+- test
+
+go-vet:
+  image: golang:latest
+  script:
+  - go mod vendor
+  - go vet ./...
+  stage: lint
+
+go-test:
+  image: golang:latest
+  script:
+  - go mod vendor
+  - go test ./...
+  stage: test
