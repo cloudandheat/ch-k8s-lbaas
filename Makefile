@@ -5,7 +5,8 @@ all: lint test $(binaries)
 $(binaries): %:
 	go build ./cmd/$@/$@.go
 
-lint: fmt
+lint:
+	go vet ./...
 
 fmt:
 	go fmt ./...
