@@ -40,7 +40,7 @@ type CustomCreateOpts struct {
 	AllowedAddressPairs []portsv2.AddressPair `json:"allowed_address_pairs,omitempty"`
 
 	// specifically this one
-	PortSecurityEnabled *bool `json:"port_security_enabled",omitempty"`
+	PortSecurityEnabled *bool `json:"port_security_enabled,omitempty"`
 }
 
 func (opts CustomCreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
