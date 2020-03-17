@@ -78,6 +78,7 @@ func NewController(
 	serviceInformer coreinformers.ServiceInformer,
 	nodeInformer coreinformers.NodeInformer,
 	l3portmanager openstack.L3PortManager,
+	agentController AgentController,
 ) (*Controller, error) {
 
 	// Create event broadcaster
@@ -102,7 +103,7 @@ func NewController(
 		servicesSynced: serviceInformer.Informer().HasSynced,
 		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Jobs"),
 		recorder:       recorder,
-		worker:         NewWorker(l3portmanager, portmapper, kubeclientset, serviceInformer.Lister(), generator),
+		worker:         NewWorker(l3portmanager, portmapper, kubeclientset, serviceInformer.Lister(), generator, agentController),
 	}
 
 	klog.Info("Setting up event handlers")

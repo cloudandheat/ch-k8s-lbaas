@@ -54,12 +54,13 @@ var (
 )
 
 type Worker struct {
-	l3portmanager  openstack.L3PortManager
-	portmapper     PortMapper
-	servicesLister corelisters.ServiceLister
-	kubeclientset  kubernetes.Interface
-	recorder       record.EventRecorder
-	generator      LoadBalancerModelGenerator
+	l3portmanager   openstack.L3PortManager
+	portmapper      PortMapper
+	servicesLister  corelisters.ServiceLister
+	kubeclientset   kubernetes.Interface
+	recorder        record.EventRecorder
+	generator       LoadBalancerModelGenerator
+	agentController AgentController
 
 	workqueue workqueue.RateLimitingInterface
 
@@ -222,7 +223,8 @@ func NewWorker(
 	portmapper PortMapper,
 	kubeclientset kubernetes.Interface,
 	services corelisters.ServiceLister,
-	generator LoadBalancerModelGenerator) *Worker {
+	generator LoadBalancerModelGenerator,
+	agentController AgentController) *Worker {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
@@ -230,14 +232,15 @@ func NewWorker(
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	return &Worker{
-		l3portmanager:  l3portmanager,
-		portmapper:     portmapper,
-		kubeclientset:  kubeclientset,
-		servicesLister: services,
-		recorder:       recorder,
-		generator:      generator,
-		workqueue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Jobs"),
-		AllowCleanups:  false,
+		l3portmanager:   l3portmanager,
+		portmapper:      portmapper,
+		kubeclientset:   kubeclientset,
+		servicesLister:  services,
+		recorder:        recorder,
+		generator:       generator,
+		agentController: agentController,
+		workqueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "Jobs"),
+		AllowCleanups:   false,
 	}
 }
 
@@ -415,6 +418,9 @@ func (j *SyncServiceJob) Run(w *Worker) (RequeueMode, error) {
 		return RequeueTail, err
 	}
 
+	// The work queue deduplicates jobs. In addition, the cleanup barrier will
+	// prevent execution of the update config job (with requeue) so that no
+	// harmful config will be generated during initial sync.
 	w.EnqueueJob(&UpdateConfigJob{})
 	return Drop, nil
 }
@@ -471,6 +477,17 @@ func (j *CleanupJob) ToString() string {
 type UpdateConfigJob struct{}
 
 func (j *UpdateConfigJob) Run(w *Worker) (RequeueMode, error) {
+	model, err := w.generator.GenerateModel(w.portmapper.GetModel())
+	if err != nil {
+		return RequeueTail, err
+	}
+
+	err = w.agentController.PushConfig(model)
+	if err != nil {
+		// TODO: should we post this as an event somewhere?
+		return RequeueTail, err
+	}
+
 	return Drop, nil
 }
 

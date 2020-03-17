@@ -18,7 +18,7 @@ func newKeepalivedGenerator() *KeepalivedConfigGenerator {
 	}
 }
 
-func TestGenerateStructuredConfigFromEmptyLBModel(t *testing.T) {
+func TestKeepalivedGenerateStructuredConfigFromEmptyLBModel(t *testing.T) {
 	g := newKeepalivedGenerator()
 
 	m := &model.LoadBalancer{
@@ -31,7 +31,7 @@ func TestGenerateStructuredConfigFromEmptyLBModel(t *testing.T) {
 	assert.Equal(t, 0, len(scfg.Instances))
 }
 
-func TestGenerateStructuredConfigFromNonEmptyLBModel(t *testing.T) {
+func TestKeepalivedGenerateStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 	g := newKeepalivedGenerator()
 
 	m := &model.LoadBalancer{
@@ -52,9 +52,58 @@ func TestGenerateStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, scfg)
 	assert.Equal(t, 1, len(scfg.Instances))
+
+	i := scfg.Instances[0]
+
+	assert.Equal(t, g.VRIDBase, i.VRID)
+	assert.Equal(t, g.Priority, i.Priority)
+	assert.Equal(t, g.Interface, i.Interface)
+	assert.Equal(t, g.VRRPPassword, i.Password)
+	assert.Equal(t, "VIPs", i.Name)
+	assert.Equal(t, []keepalivedVRRPAddress{
+		{Address: "127.0.0.1", Device: g.Interface},
+		{Address: "127.0.0.2", Device: g.Interface},
+		{Address: "127.0.0.3", Device: g.Interface},
+	}, i.Addresses)
 }
 
-func TestGenerateConfigFromNonEmptyLBModel(t *testing.T) {
+func TestKeepalivedGenerateStructuredConfigSortsByAddress(t *testing.T) {
+	g := newKeepalivedGenerator()
+
+	m := &model.LoadBalancer{
+		Ingress: []model.IngressIP{
+			{
+				Address: "127.0.0.3",
+			},
+			{
+				Address: "127.0.0.2",
+			},
+			{
+				Address: "127.0.0.1",
+			},
+		},
+	}
+
+	scfg, err := g.GenerateStructuredConfig(m)
+	assert.Nil(t, err)
+	assert.NotNil(t, scfg)
+	assert.Equal(t, 1, len(scfg.Instances))
+
+	i := scfg.Instances[0]
+
+	assert.Equal(t, g.VRIDBase, i.VRID)
+	assert.Equal(t, g.Priority, i.Priority)
+	assert.Equal(t, g.Interface, i.Interface)
+	assert.Equal(t, g.VRRPPassword, i.Password)
+	assert.Equal(t, "VIPs", i.Name)
+	assert.Equal(t, []keepalivedVRRPAddress{
+		{Address: "127.0.0.1", Device: g.Interface},
+		{Address: "127.0.0.2", Device: g.Interface},
+		{Address: "127.0.0.3", Device: g.Interface},
+	}, i.Addresses)
+}
+
+func TestKeepalivedGenerateConfigFromNonEmptyLBModel(t *testing.T) {
 	g := newKeepalivedGenerator()
 
 	m := &model.LoadBalancer{

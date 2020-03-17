@@ -75,11 +75,17 @@ func main() {
 		klog.Fatalf("Failed to create L3 port manager: %s", err.Error())
 	}
 
+	agentController, err := controller.NewHTTPAgentController(fileCfg.Agents)
+	if err != nil {
+		klog.Fatalf("Failed to configure agent controller: %s", err.Error())
+	}
+
 	lbcontroller, err := controller.NewController(
 		kubeClient,
 		kubeInformerFactory.Core().V1().Services(),
 		kubeInformerFactory.Core().V1().Nodes(),
 		l3portmanager,
+		agentController,
 	)
 	if err != nil {
 		klog.Fatalf("Failed to configure controller: %s", err.Error())

@@ -17,6 +17,10 @@ type MockLoadBalancerModelGenerator struct {
 	mock.Mock
 }
 
+type MockAgentController struct {
+	mock.Mock
+}
+
 func softCastStringArray(something interface{}) []string {
 	if something == nil {
 		return nil
@@ -75,5 +79,18 @@ func NewMockLoadBalancerModelGenerator() *MockLoadBalancerModelGenerator {
 
 func (m *MockLoadBalancerModelGenerator) GenerateModel(portAssignment map[string]string) (*model.LoadBalancer, error) {
 	a := m.Called(portAssignment)
-	return a.Get(0).(*model.LoadBalancer), a.Error(1)
+	obj := a.Get(0)
+	if obj == nil {
+		return nil, a.Error(1)
+	}
+	return obj.(*model.LoadBalancer), a.Error(1)
+}
+
+func NewMockAgentController() *MockAgentController {
+	return new(MockAgentController)
+}
+
+func (m *MockAgentController) PushConfig(cfg *model.LoadBalancer) error {
+	a := m.Called(cfg)
+	return a.Error(0)
 }

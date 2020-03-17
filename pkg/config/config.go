@@ -11,18 +11,26 @@ import (
 )
 
 type Agent struct {
-	Address string `toml:"address"`
-	Port    int32  `toml:"port"`
+	URL string `toml:"url"`
+}
+
+type ServiceConfig struct {
+	ConfigFile    string   `toml:"config-file"`
+	ReloadCommand []string `toml:"reload-command"`
+	StatusCommand []string `toml:"status-command"`
+	StartCommand  []string `toml:"start-command"`
+	CheckDelay    int      `toml:"check-delay"`
 }
 
 type Keepalived struct {
 	VRRPPassword string `toml:"vrrp-password"`
 	// TODO: allow different priorities per-service so that inbound traffic
 	// is being balanced between VMs.
-	Priority   int    `toml:"priority"`
-	VRIDBase   int    `toml:"virtual-router-id-base"`
-	Interface  string `toml:"interface"`
-	OutputFile string `toml:"output-file"`
+	Priority  int    `toml:"priority"`
+	VRIDBase  int    `toml:"virtual-router-id-base"`
+	Interface string `toml:"interface"`
+
+	Service ServiceConfig `toml:"service"`
 }
 
 type Nftables struct {
@@ -34,12 +42,14 @@ type Nftables struct {
 	NATPostroutingChainName string `toml:"nat-postrouting-chain"`
 	FWMarkBits              uint32 `toml:"fwmark-bits"`
 	FWMarkMask              uint32 `toml:"fwmark-mask"`
-	OutputFile              string `toml:"output-file"`
+
+	Service ServiceConfig `toml:"service"`
 }
 
 type Agents struct {
-	SharedSecret string  `toml:"shared-secret"`
-	Agents       []Agent `toml:"agent"`
+	SharedSecret  string  `toml:"shared-secret"`
+	TokenLifetime int     `toml:"token-lifetime"`
+	Agents        []Agent `toml:"agent"`
 }
 
 type ControllerConfig struct {
@@ -90,8 +100,19 @@ func defaultString(field *string, value string) {
 	}
 }
 
+func defaultStringList(field *[]string, value []string) {
+	if field == nil || len(*field) == 0 {
+		*field = make([]string, len(value))
+		copy(*field, value)
+	}
+}
+
 func FillKeepalivedConfig(cfg *Keepalived) {
 	defaultString(&cfg.VRRPPassword, "useless")
+
+	defaultStringList(&cfg.Service.ReloadCommand, []string{"sudo", "systemctl", "reload", "keepalived"})
+	defaultStringList(&cfg.Service.StatusCommand, []string{"sudo", "systemctl", "is-active", "keepalived"})
+	defaultStringList(&cfg.Service.StartCommand, []string{"sudo", "systemctl", "start", "keepalived"})
 }
 
 func FillNftablesConfig(cfg *Nftables) {
@@ -106,6 +127,9 @@ func FillNftablesConfig(cfg *Nftables) {
 		cfg.FWMarkBits = 1
 		cfg.FWMarkMask = 1
 	}
+
+	defaultStringList(&cfg.Service.ReloadCommand, []string{"sudo", "systemctl", "reload", "nftables"})
+	defaultStringList(&cfg.Service.StartCommand, []string{"sudo", "systemctl", "restart", "nftables"})
 }
 
 func FillAgentConfig(cfg *AgentConfig) {
@@ -126,12 +150,12 @@ func ValidateAgentConfig(cfg *AgentConfig) error {
 		return fmt.Errorf("keepalived.interface must be set")
 	}
 
-	if cfg.Keepalived.OutputFile == "" {
-		return fmt.Errorf("keepalived.output-file must be set")
+	if cfg.Keepalived.Service.ConfigFile == "" {
+		return fmt.Errorf("keepalived.service.config-file must be set")
 	}
 
-	if cfg.Nftables.OutputFile == "" {
-		return fmt.Errorf("nftables.output-file must be set")
+	if cfg.Nftables.Service.ConfigFile == "" {
+		return fmt.Errorf("nftables.service.config-file must be set")
 	}
 
 	if cfg.SharedSecret == "" {

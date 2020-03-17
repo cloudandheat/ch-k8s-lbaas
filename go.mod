@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/BurntSushi/toml v0.3.1
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gophercloud/gophercloud v0.6.1-0.20191122030953-d8ac278c1c9d
 	github.com/gophercloud/utils v0.0.0-20200302155035-0565566533e4
 	github.com/imdario/mergo v0.3.8 // indirect

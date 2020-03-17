@@ -33,6 +33,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
+	controllertesting "github.com/cloudandheat/cah-loadbalancer/pkg/controller/testing"
 	ostesting "github.com/cloudandheat/cah-loadbalancer/pkg/openstack/testing"
 )
 
@@ -73,6 +74,7 @@ func (f *fixture) newController() (*Controller, kubeinformers.SharedInformerFact
 		k8sI.Core().V1().Services(),
 		k8sI.Core().V1().Nodes(),
 		ostesting.NewMockL3PortManager(),
+		controllertesting.NewMockAgentController(),
 	)
 	if err != nil {
 		klog.Fatalf("failed to construct controller: %s", err.Error())

@@ -26,9 +26,10 @@ type workerFixture struct {
 	kubeactions   []core.Action
 	kubeobjects   []runtime.Object
 
-	l3portmanager *ostesting.MockL3PortManager
-	portmapper    *controllertesting.MockPortMapper
-	generator     *controllertesting.MockLoadBalancerModelGenerator
+	l3portmanager   *ostesting.MockL3PortManager
+	portmapper      *controllertesting.MockPortMapper
+	generator       *controllertesting.MockLoadBalancerModelGenerator
+	agentController *controllertesting.MockAgentController
 
 	willAllowCleanups bool
 }
@@ -39,6 +40,7 @@ func newWorkerFixture(t *testing.T) *workerFixture {
 	f.l3portmanager = ostesting.NewMockL3PortManager()
 	f.portmapper = controllertesting.NewMockPortMapper()
 	f.generator = controllertesting.NewMockLoadBalancerModelGenerator()
+	f.agentController = controllertesting.NewMockAgentController()
 	f.kubeobjects = []runtime.Object{}
 	return f
 }
@@ -51,7 +53,7 @@ func (f *workerFixture) newWorker() (*Worker, kubeinformers.SharedInformerFactor
 		k8sI.Core().V1().Services().Informer().GetIndexer().Add(s)
 	}
 
-	w := NewWorker(f.l3portmanager, f.portmapper, f.kubeclient, k8sI.Core().V1().Services().Lister(), f.generator)
+	w := NewWorker(f.l3portmanager, f.portmapper, f.kubeclient, k8sI.Core().V1().Services().Lister(), f.generator, f.agentController)
 	w.AllowCleanups = f.willAllowCleanups
 	return w, k8sI
 }
@@ -108,6 +110,8 @@ func (f *workerFixture) runWith(startInformers bool, body func(w *Worker)) *Work
 
 	f.portmapper.AssertExpectations(f.t)
 	f.l3portmanager.AssertExpectations(f.t)
+	f.agentController.AssertExpectations(f.t)
+	f.generator.AssertExpectations(f.t)
 
 	return w
 }
@@ -695,4 +699,56 @@ func TestPupdateServiceStatusForwardsErrorFromGetExternalAddress(t *testing.T) {
 		assert.Equal(t, someError, err)
 		assert.False(t, updated)
 	})
+}
+
+func TestUpdateConfigJobPushesConfigToAgents(t *testing.T) {
+	f := newWorkerFixture(t)
+
+	lbm := &model.LoadBalancer{}
+	pm := make(map[string]string)
+
+	f.portmapper.On("GetModel").Return(pm).Times(1)
+	f.generator.On("GenerateModel", pm).Return(lbm, nil).Times(1)
+	f.agentController.On("PushConfig", lbm).Return(nil).Times(1)
+
+	j := &UpdateConfigJob{}
+
+	_, requeue := f.run(j)
+	assert.Equal(t, Drop, requeue)
+}
+
+func TestUpdateConfigJobRequeuesIfPushFails(t *testing.T) {
+	f := newWorkerFixture(t)
+
+	lbm := &model.LoadBalancer{}
+	pm := make(map[string]string)
+
+	someError := fmt.Errorf("random error")
+
+	f.portmapper.On("GetModel").Return(pm).Times(1)
+	f.generator.On("GenerateModel", pm).Return(lbm, nil).Times(1)
+	f.agentController.On("PushConfig", lbm).Return(someError).Times(1)
+
+	j := &UpdateConfigJob{}
+
+	_, requeue, err := f.runExpectError(j)
+	assert.Equal(t, RequeueTail, requeue)
+	assert.Equal(t, someError, err)
+}
+
+func TestUpdateConfigJobRequeuesIfModelGenerationFails(t *testing.T) {
+	f := newWorkerFixture(t)
+
+	pm := make(map[string]string)
+
+	someError := fmt.Errorf("random error")
+
+	f.portmapper.On("GetModel").Return(pm).Times(1)
+	f.generator.On("GenerateModel", pm).Return(nil, someError).Times(1)
+
+	j := &UpdateConfigJob{}
+
+	_, requeue, err := f.runExpectError(j)
+	assert.Equal(t, RequeueTail, requeue)
+	assert.Equal(t, someError, err)
 }

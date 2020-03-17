@@ -2,6 +2,7 @@ package agent
 
 import (
 	"io"
+	"sort"
 	"text/template"
 
 	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
@@ -84,6 +85,14 @@ func (g *KeepalivedConfigGenerator) GenerateStructuredConfig(lb *model.LoadBalan
 			Device:  g.Interface,
 		})
 	}
+
+	sort.SliceStable(instance.Addresses, func(i, j int) bool {
+		// TODO: if we ever switch to a multi interface setup, we’ll have to
+		// take the interface into account, too.
+		aA := instance.Addresses[i]
+		aB := instance.Addresses[j]
+		return aA.Address < aB.Address
+	})
 
 	return result, nil
 }

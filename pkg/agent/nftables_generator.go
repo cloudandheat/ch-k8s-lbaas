@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"io"
+	"sort"
 	"text/template"
 
 	corev1 "k8s.io/api/core/v1"
@@ -99,15 +100,32 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 				return nil, err
 			}
 
+			addrs := copyAddresses(port.DestinationAddresses)
+			sort.Strings(addrs)
+
 			result.Forwards = append(result.Forwards, nftablesForward{
 				Protocol:             mappedProtocol,
 				InboundIP:            ingress.Address,
 				InboundPort:          port.InboundPort,
-				DestinationAddresses: copyAddresses(port.DestinationAddresses),
+				DestinationAddresses: addrs,
 				DestinationPort:      port.DestinationPort,
 			})
 		}
 	}
+
+	sort.SliceStable(result.Forwards, func(i, j int) bool {
+		fwdA := &result.Forwards[i]
+		fwdB := &result.Forwards[j]
+		isLess := fwdA.InboundIP < fwdB.InboundIP
+		if isLess {
+			return true
+		}
+		if fwdA.InboundIP != fwdB.InboundIP {
+			return false
+		}
+
+		return fwdA.InboundPort < fwdB.InboundPort
+	})
 
 	return result, nil
 }

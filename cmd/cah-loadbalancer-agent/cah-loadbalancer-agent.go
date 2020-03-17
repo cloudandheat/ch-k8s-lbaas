@@ -17,6 +17,7 @@ var (
 )
 
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
 
 	fileCfg, err := config.ReadAgentConfigFromFile(configPath)
@@ -35,21 +36,28 @@ func main() {
 		klog.Fatalf("shared-secret failed to decode: %s", err.Error())
 	}
 
-	_ = sharedSecret
+	nftablesConfig := &agent.ConfigManager{
+		Service: fileCfg.Nftables.Service,
+		Generator: &agent.NftablesGenerator{
+			Cfg: fileCfg.Nftables,
+		},
+	}
 
-	http.Handle("/v1/apply", &agent.ApplyHandlerv1{
-		MaxRequestSize: 1048576,
-		KeepalivedGenerator: &agent.KeepalivedConfigGenerator{
+	keepalivedConfig := &agent.ConfigManager{
+		Service: fileCfg.Keepalived.Service,
+		Generator: &agent.KeepalivedConfigGenerator{
 			VRIDBase: fileCfg.Keepalived.VRIDBase,
 			VRRPPassword: fileCfg.Keepalived.VRRPPassword,
 			Interface: fileCfg.Keepalived.Interface,
 			Priority: fileCfg.Keepalived.Priority,
 		},
-		KeepalivedOutputFile: fileCfg.Keepalived.OutputFile,
-		NftablesGenerator: &agent.NftablesGenerator{
-			Cfg: fileCfg.Nftables,
-		},
-		NftablesOutputFile: fileCfg.Nftables.OutputFile,
+	}
+
+	http.Handle("/v1/apply", &agent.ApplyHandlerv1{
+		MaxRequestSize: 1048576,
+		SharedSecret: sharedSecret,
+		KeepalivedConfig: keepalivedConfig,
+		NftablesConfig: nftablesConfig,
 	})
 
 	http.ListenAndServe(fmt.Sprintf("%s:%d", fileCfg.BindAddress, fileCfg.BindPort), nil)
