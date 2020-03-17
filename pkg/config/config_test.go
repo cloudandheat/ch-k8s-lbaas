@@ -46,6 +46,28 @@ port=12345
 [[agents.agent]]
 address="127.0.0.2"
 `
+
+	agentCfgBlob = `
+shared-secret="some-base64-blob"
+bind-address="192.168.23.42"
+bind-port=31337
+
+[keepalived]
+output-file="/etc/keepalived/conf.d/foo.conf"
+priority=120
+vrrp-password="bogus"
+
+[nftables]
+output-file="/etc/nft/nft.d/foo.conf"
+
+filter-table-name="filter"
+filter-table-type="inet"
+filter-forward-chain="forward"
+
+nat-table-name="nat"
+nat-prerouting-chain="prerouting"
+nat-postrouting-chain="postrouting"
+`
 )
 
 func TestCanReadControllerConfig(t *testing.T) {
@@ -90,4 +112,51 @@ func TestCanReadControllerConfig(t *testing.T) {
 
 	assert.Equal(t, "127.0.0.2", agents.Agents[1].Address)
 	assert.Equal(t, int32(0), agents.Agents[1].Port)
+}
+
+func TestCanReadAgentConfig(t *testing.T) {
+	r := strings.NewReader(agentCfgBlob)
+	cfg, err := ReadAgentConfig(r)
+	assert.Nil(t, err)
+
+	assert.Equal(t, "some-base64-blob", cfg.SharedSecret)
+	assert.Equal(t, "192.168.23.42", cfg.BindAddress)
+	assert.Equal(t, int32(31337), cfg.BindPort)
+
+	kc := &cfg.Keepalived
+	assert.Equal(t, "/etc/keepalived/conf.d/foo.conf", kc.OutputFile)
+	assert.Equal(t, 120, kc.Priority)
+	assert.Equal(t, "bogus", kc.VRRPPassword)
+
+	nftc := &cfg.Nftables
+	assert.Equal(t, "/etc/nft/nft.d/foo.conf", nftc.OutputFile)
+	assert.Equal(t, "filter", nftc.FilterTableName)
+	assert.Equal(t, "inet", nftc.FilterTableType)
+	assert.Equal(t, "forward", nftc.FilterForwardChainName)
+	assert.Equal(t, "nat", nftc.NATTableName)
+	assert.Equal(t, "postrouting", nftc.NATPostroutingChainName)
+	assert.Equal(t, "prerouting", nftc.NATPreroutingChainName)
+}
+
+func TestFillAgentConfig(t *testing.T) {
+	cfg := AgentConfig{}
+	FillAgentConfig(&cfg)
+
+	assert.Equal(t, "", cfg.SharedSecret)
+	assert.Equal(t, "", cfg.BindAddress)
+	assert.Equal(t, int32(0), cfg.BindPort)
+
+	kc := &cfg.Keepalived
+	assert.Equal(t, "", kc.OutputFile)
+	assert.Equal(t, 0, kc.Priority)
+	assert.Equal(t, "useless", kc.VRRPPassword)
+
+	nftc := &cfg.Nftables
+	assert.Equal(t, "", nftc.OutputFile)
+	assert.Equal(t, "filter", nftc.FilterTableName)
+	assert.Equal(t, "inet", nftc.FilterTableType)
+	assert.Equal(t, "forward", nftc.FilterForwardChainName)
+	assert.Equal(t, "nat", nftc.NATTableName)
+	assert.Equal(t, "postrouting", nftc.NATPostroutingChainName)
+	assert.Equal(t, "prerouting", nftc.NATPreroutingChainName)
 }
