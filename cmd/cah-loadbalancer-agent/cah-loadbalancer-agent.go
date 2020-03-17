@@ -25,6 +25,10 @@ func main() {
 	}
 
 	config.FillAgentConfig(&fileCfg)
+	err = config.ValidateAgentConfig(&fileCfg)
+	if err != nil {
+		klog.Fatalf("invalid configuration: %s", err.Error())
+	}
 
 	sharedSecret, err := base64.StdEncoding.DecodeString(fileCfg.SharedSecret)
 	if err != nil {
@@ -42,6 +46,10 @@ func main() {
 			Priority: fileCfg.Keepalived.Priority,
 		},
 		KeepalivedOutputFile: fileCfg.Keepalived.OutputFile,
+		NftablesGenerator: &agent.NftablesGenerator{
+			Cfg: fileCfg.Nftables,
+		},
+		NftablesOutputFile: fileCfg.Nftables.OutputFile,
 	})
 
 	http.ListenAndServe(fmt.Sprintf("%s:%d", fileCfg.BindAddress, fileCfg.BindPort), nil)

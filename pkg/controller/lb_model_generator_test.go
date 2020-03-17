@@ -165,7 +165,7 @@ func TestSinglePortSingleServiceAssignment(t *testing.T) {
 		model.FromService(svc).ToKey(): "port-id-1",
 	}
 
-	f.l3portmanager.On("GetExternalAddress", "port-id-1").Return("external-ip-1", "", nil).Times(1)
+	f.l3portmanager.On("GetInternalAddress", "port-id-1").Return("ingress-ip-1", nil).Times(1)
 
 	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(a)
@@ -173,7 +173,7 @@ func TestSinglePortSingleServiceAssignment(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.Equal(t, 1, len(m.Ingress))
 
-		anyIngressIP(t, m.Ingress, "external-ip-1", func(t *testing.T, i model.IngressIP) {
+		anyIngressIP(t, m.Ingress, "ingress-ip-1", func(t *testing.T, i model.IngressIP) {
 			assert.Equal(t, 1, len(i.Ports))
 
 			anyPort(t, i.Ports, 80, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
@@ -206,7 +206,7 @@ func TestSinglePortMultiServiceAssignment(t *testing.T) {
 		model.FromService(svc2).ToKey(): "port-id-1",
 	}
 
-	f.l3portmanager.On("GetExternalAddress", "port-id-1").Return("external-ip-1", "", nil).Times(1)
+	f.l3portmanager.On("GetInternalAddress", "port-id-1").Return("ingress-ip-1", nil).Times(1)
 
 	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(a)
@@ -214,7 +214,7 @@ func TestSinglePortMultiServiceAssignment(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.Equal(t, 1, len(m.Ingress))
 
-		anyIngressIP(t, m.Ingress, "external-ip-1", func(t *testing.T, i model.IngressIP) {
+		anyIngressIP(t, m.Ingress, "ingress-ip-1", func(t *testing.T, i model.IngressIP) {
 			assert.Equal(t, 3, len(i.Ports))
 
 			anyPort(t, i.Ports, 53, corev1.ProtocolUDP, func(t *testing.T, p model.PortForward) {
@@ -259,8 +259,8 @@ func TestMultiPortSingleServiceAssignment(t *testing.T) {
 		model.FromService(svc2).ToKey(): "port-id-2",
 	}
 
-	f.l3portmanager.On("GetExternalAddress", "port-id-1").Return("external-ip-1", "", nil).Times(1)
-	f.l3portmanager.On("GetExternalAddress", "port-id-2").Return("external-ip-2", "", nil).Times(1)
+	f.l3portmanager.On("GetInternalAddress", "port-id-1").Return("ingress-ip-1", nil).Times(1)
+	f.l3portmanager.On("GetInternalAddress", "port-id-2").Return("ingress-ip-2", nil).Times(1)
 
 	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(a)
@@ -268,7 +268,7 @@ func TestMultiPortSingleServiceAssignment(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.Equal(t, 2, len(m.Ingress))
 
-		anyIngressIP(t, m.Ingress, "external-ip-1", func(t *testing.T, i model.IngressIP) {
+		anyIngressIP(t, m.Ingress, "ingress-ip-1", func(t *testing.T, i model.IngressIP) {
 			assert.Equal(t, 2, len(i.Ports))
 
 			anyPort(t, i.Ports, 80, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
@@ -284,7 +284,7 @@ func TestMultiPortSingleServiceAssignment(t *testing.T) {
 			})
 		})
 
-		anyIngressIP(t, m.Ingress, "external-ip-2", func(t *testing.T, i model.IngressIP) {
+		anyIngressIP(t, m.Ingress, "ingress-ip-2", func(t *testing.T, i model.IngressIP) {
 			assert.Equal(t, 1, len(i.Ports))
 
 			anyPort(t, i.Ports, 53, corev1.ProtocolUDP, func(t *testing.T, p model.PortForward) {
@@ -325,8 +325,8 @@ func TestMultiPortMultiServiceAssignment(t *testing.T) {
 		model.FromService(svc3).ToKey(): "port-id-2",
 	}
 
-	f.l3portmanager.On("GetExternalAddress", "port-id-1").Return("external-ip-1", "", nil).Times(1)
-	f.l3portmanager.On("GetExternalAddress", "port-id-2").Return("external-ip-2", "", nil).Times(1)
+	f.l3portmanager.On("GetInternalAddress", "port-id-1").Return("ingress-ip-1", nil).Times(1)
+	f.l3portmanager.On("GetInternalAddress", "port-id-2").Return("ingress-ip-2", nil).Times(1)
 
 	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(a)
@@ -334,7 +334,7 @@ func TestMultiPortMultiServiceAssignment(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.Equal(t, 2, len(m.Ingress))
 
-		anyIngressIP(t, m.Ingress, "external-ip-1", func(t *testing.T, i model.IngressIP) {
+		anyIngressIP(t, m.Ingress, "ingress-ip-1", func(t *testing.T, i model.IngressIP) {
 			assert.Equal(t, 2, len(i.Ports))
 
 			anyPort(t, i.Ports, 80, corev1.ProtocolTCP, func(t *testing.T, p model.PortForward) {
@@ -350,7 +350,7 @@ func TestMultiPortMultiServiceAssignment(t *testing.T) {
 			})
 		})
 
-		anyIngressIP(t, m.Ingress, "external-ip-2", func(t *testing.T, i model.IngressIP) {
+		anyIngressIP(t, m.Ingress, "ingress-ip-2", func(t *testing.T, i model.IngressIP) {
 			assert.Equal(t, 3, len(i.Ports))
 
 			anyPort(t, i.Ports, 53, corev1.ProtocolUDP, func(t *testing.T, p model.PortForward) {

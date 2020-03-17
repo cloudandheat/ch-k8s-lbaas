@@ -2,11 +2,11 @@ package agent
 
 import (
 	"bytes"
-	"os"
 	"encoding/json"
 	"io"
 	"mime"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 
@@ -18,9 +18,26 @@ import (
 type ApplyHandlerv1 struct {
 	mutex sync.Mutex
 
-	KeepalivedGenerator ConfigGenerator
+	KeepalivedGenerator  ConfigGenerator
+	NftablesGenerator    ConfigGenerator
 	KeepalivedOutputFile string
-	MaxRequestSize int
+	NftablesOutputFile   string
+	MaxRequestSize       int
+}
+
+func writeConfig(m *model.LoadBalancer, generator ConfigGenerator, filename string) error {
+	fout, err := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0750)
+	if err != nil {
+		return err
+	}
+	defer fout.Close()
+
+	err = generator.GenerateConfig(m, fout)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (h *ApplyHandlerv1) preflightCheck(w http.ResponseWriter, r *http.Request) (content_length int, success bool) {
@@ -86,17 +103,16 @@ func (h *ApplyHandlerv1) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	klog.Infof("received config: %#v", lbcfg)
 
-	fout, err := os.OpenFile(h.KeepalivedOutputFile, os.O_WRONLY | os.O_TRUNC | os.O_CREATE, 0750)
+	err = writeConfig(lbcfg, h.KeepalivedGenerator, h.KeepalivedOutputFile)
 	if err != nil {
 		klog.Errorf("Failed to open keepalived config for writing: %s", err.Error())
 		w.WriteHeader(500)
 		return
 	}
-	defer fout.Close()
 
-	err = h.KeepalivedGenerator.GenerateConfig(lbcfg, fout)
+	err = writeConfig(lbcfg, h.NftablesGenerator, h.NftablesOutputFile)
 	if err != nil {
-		klog.Errorf("Failed to generate keepalived config: %s", err.Error())
+		klog.Errorf("Failed to open nftables config for writing: %s", err.Error())
 		w.WriteHeader(500)
 		return
 	}

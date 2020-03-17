@@ -33,3 +33,8 @@ func (m *MockL3PortManager) GetExternalAddress(portID string) (string, string, e
 	a := m.Called(portID)
 	return a.String(0), a.String(1), a.Error(2)
 }
+
+func (m *MockL3PortManager) GetInternalAddress(portID string) (string, error) {
+	a := m.Called(portID)
+	return a.String(0), a.Error(1)
+}

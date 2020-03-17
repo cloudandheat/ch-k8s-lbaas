@@ -52,6 +52,7 @@ type L3PortManager interface {
 	CleanUnusedPorts(usedPorts []string) error
 	GetAvailablePorts() ([]string, error)
 	GetExternalAddress(portID string) (string, string, error)
+	GetInternalAddress(portID string) (string, error)
 }
 
 type OpenStackL3PortManager struct {
@@ -283,4 +284,17 @@ func (pm *OpenStackL3PortManager) GetExternalAddress(portID string) (string, str
 	}
 
 	return port.FixedIPs[0].IPAddress, "", nil
+}
+
+func (pm *OpenStackL3PortManager) GetInternalAddress(portID string) (string, error) {
+	port, _, err := pm.cache.GetPortByID(portID)
+	if err != nil {
+		return "", err
+	}
+
+	if len(port.FixedIPs) == 0 {
+		return "", ErrFixedIPMissing
+	}
+
+	return port.FixedIPs[0].IPAddress, nil
 }

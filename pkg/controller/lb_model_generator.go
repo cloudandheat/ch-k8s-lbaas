@@ -68,12 +68,12 @@ func (g *DefaultLoadBalancerModelGenerator) GenerateModel(portAssignment map[str
 
 		ingress, ok := ingressMap[portID]
 		if !ok {
-			externalIP, _, err := g.l3portmanager.GetExternalAddress(portID)
+			ingressIP, err := g.l3portmanager.GetInternalAddress(portID)
 			if err != nil {
 				return nil, err
 			}
 			ingress = model.IngressIP{
-				Address: externalIP,
+				Address: ingressIP,
 				Ports:   []model.PortForward{},
 			}
 		}

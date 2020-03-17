@@ -9,12 +9,12 @@ import (
 	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
 )
 
-func newKeepalivedGenerator() (*KeepalivedConfigGenerator) {
+func newKeepalivedGenerator() *KeepalivedConfigGenerator {
 	return &KeepalivedConfigGenerator{
-		Priority: 23,
+		Priority:     23,
 		VRRPPassword: "password",
-		VRIDBase: 10,
-		Interface: "ethfoo",
+		VRIDBase:     10,
+		Interface:    "ethfoo",
 	}
 }
 

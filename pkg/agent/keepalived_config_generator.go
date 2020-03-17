@@ -34,15 +34,15 @@ vrrp_instance LBaaS_{{ .Name }} {
 
 type keepalivedVRRPAddress struct {
 	Address string
-	Device string
+	Device  string
 }
 
 type keepalivedVRRPInstance struct {
-	Name string
+	Name      string
 	Interface string
-	Priority int
-	VRID int
-	Password string
+	Priority  int
+	VRID      int
+	Password  string
 	Addresses []keepalivedVRRPAddress
 }
 
@@ -51,10 +51,10 @@ type keepalivedConfig struct {
 }
 
 type KeepalivedConfigGenerator struct {
-	Priority int
+	Priority     int
 	VRRPPassword string
-	VRIDBase int
-	Interface string
+	VRIDBase     int
+	Interface    string
 }
 
 func (g *KeepalivedConfigGenerator) GenerateStructuredConfig(lb *model.LoadBalancer) (*keepalivedConfig, error) {
@@ -67,21 +67,21 @@ func (g *KeepalivedConfigGenerator) GenerateStructuredConfig(lb *model.LoadBalan
 	result := &keepalivedConfig{
 		Instances: []keepalivedVRRPInstance{
 			{
-				Name: "VIPs",
+				Name:      "VIPs",
 				Interface: g.Interface,
-				Priority: g.Priority,
-				VRID: g.VRIDBase,
-				Password: g.VRRPPassword,
+				Priority:  g.Priority,
+				VRID:      g.VRIDBase,
+				Password:  g.VRRPPassword,
 				Addresses: []keepalivedVRRPAddress{},
 			},
 		},
 	}
 
 	instance := &result.Instances[0]
-	for _, ingress := range(lb.Ingress) {
+	for _, ingress := range lb.Ingress {
 		instance.Addresses = append(instance.Addresses, keepalivedVRRPAddress{
 			Address: ingress.Address,
-			Device: g.Interface,
+			Device:  g.Interface,
 		})
 	}
 
