@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
+	"github.com/cloudandheat/cah-loadbalancer/internal/model"
 )
 
 func newKeepalivedGenerator() *KeepalivedConfigGenerator {

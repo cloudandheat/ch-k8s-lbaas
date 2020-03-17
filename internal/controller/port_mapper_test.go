@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
-	ostesting "github.com/cloudandheat/cah-loadbalancer/pkg/openstack/testing"
+	"github.com/cloudandheat/cah-loadbalancer/internal/model"
+	ostesting "github.com/cloudandheat/cah-loadbalancer/internal/openstack/testing"
 )
 
 type portMapperFixture struct {

@@ -16,8 +16,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
-	"github.com/cloudandheat/cah-loadbalancer/pkg/openstack"
+	"github.com/cloudandheat/cah-loadbalancer/internal/model"
+	"github.com/cloudandheat/cah-loadbalancer/internal/openstack"
 )
 
 type RequeueMode int

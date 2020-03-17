@@ -18,8 +18,8 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 
-	"github.com/cloudandheat/cah-loadbalancer/pkg/config"
-	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
+	"github.com/cloudandheat/cah-loadbalancer/internal/config"
+	"github.com/cloudandheat/cah-loadbalancer/internal/model"
 )
 
 type ApplyHandlerv1 struct {

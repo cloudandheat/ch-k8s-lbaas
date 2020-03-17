@@ -7,7 +7,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/cloudandheat/cah-loadbalancer/pkg/openstack"
+	"github.com/cloudandheat/cah-loadbalancer/internal/openstack"
 )
 
 type Agent struct {

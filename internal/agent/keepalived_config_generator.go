@@ -5,7 +5,7 @@ import (
 	"sort"
 	"text/template"
 
-	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
+	"github.com/cloudandheat/cah-loadbalancer/internal/model"
 )
 
 type ConfigGenerator interface {

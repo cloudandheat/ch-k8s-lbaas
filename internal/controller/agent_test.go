@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/cloudandheat/cah-loadbalancer/pkg/model"
+	"github.com/cloudandheat/cah-loadbalancer/internal/model"
 )
 
 type mockSimplifiedHTTPClient struct {
