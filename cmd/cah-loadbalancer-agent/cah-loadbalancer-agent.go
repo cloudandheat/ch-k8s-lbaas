@@ -46,18 +46,18 @@ func main() {
 	keepalivedConfig := &agent.ConfigManager{
 		Service: fileCfg.Keepalived.Service,
 		Generator: &agent.KeepalivedConfigGenerator{
-			VRIDBase: fileCfg.Keepalived.VRIDBase,
+			VRIDBase:     fileCfg.Keepalived.VRIDBase,
 			VRRPPassword: fileCfg.Keepalived.VRRPPassword,
-			Interface: fileCfg.Keepalived.Interface,
-			Priority: fileCfg.Keepalived.Priority,
+			Interface:    fileCfg.Keepalived.Interface,
+			Priority:     fileCfg.Keepalived.Priority,
 		},
 	}
 
 	http.Handle("/v1/apply", &agent.ApplyHandlerv1{
-		MaxRequestSize: 1048576,
-		SharedSecret: sharedSecret,
+		MaxRequestSize:   1048576,
+		SharedSecret:     sharedSecret,
 		KeepalivedConfig: keepalivedConfig,
-		NftablesConfig: nftablesConfig,
+		NftablesConfig:   nftablesConfig,
 	})
 
 	http.ListenAndServe(fmt.Sprintf("%s:%d", fileCfg.BindAddress, fileCfg.BindPort), nil)

@@ -40,11 +40,10 @@ subnet-id="456def"
 shared-secret="base64-encoded-string"
 
 [[agents.agent]]
-address="127.0.0.1"
-port=12345
+url="http://127.0.0.1:8081"
 
 [[agents.agent]]
-address="127.0.0.2"
+url="http://127.0.0.2:8080"
 `
 
 	agentCfgBlob = `
@@ -53,13 +52,13 @@ bind-address="192.168.23.42"
 bind-port=31337
 
 [keepalived]
-output-file="/etc/keepalived/conf.d/foo.conf"
 priority=120
 vrrp-password="bogus"
 
-[nftables]
-output-file="/etc/nft/nft.d/foo.conf"
+[keepalived.service]
+config-file="/etc/keepalived/conf.d/foo.conf"
 
+[nftables]
 filter-table-name="filter"
 filter-table-type="inet"
 filter-forward-chain="forward"
@@ -67,6 +66,9 @@ filter-forward-chain="forward"
 nat-table-name="nat"
 nat-prerouting-chain="prerouting"
 nat-postrouting-chain="postrouting"
+
+[nftables.service]
+config-file="/etc/nft/nft.d/foo.conf"
 `
 )
 
@@ -107,11 +109,9 @@ func TestCanReadControllerConfig(t *testing.T) {
 	assert.Equal(t, "base64-encoded-string", agents.SharedSecret)
 	assert.Equal(t, 2, len(agents.Agents))
 
-	assert.Equal(t, "127.0.0.1", agents.Agents[0].Address)
-	assert.Equal(t, int32(12345), agents.Agents[0].Port)
+	assert.Equal(t, "http://127.0.0.1:8081", agents.Agents[0].URL)
 
-	assert.Equal(t, "127.0.0.2", agents.Agents[1].Address)
-	assert.Equal(t, int32(0), agents.Agents[1].Port)
+	assert.Equal(t, "http://127.0.0.2:8080", agents.Agents[1].URL)
 }
 
 func TestCanReadAgentConfig(t *testing.T) {
@@ -124,12 +124,12 @@ func TestCanReadAgentConfig(t *testing.T) {
 	assert.Equal(t, int32(31337), cfg.BindPort)
 
 	kc := &cfg.Keepalived
-	assert.Equal(t, "/etc/keepalived/conf.d/foo.conf", kc.OutputFile)
 	assert.Equal(t, 120, kc.Priority)
 	assert.Equal(t, "bogus", kc.VRRPPassword)
+	assert.Equal(t, "/etc/keepalived/conf.d/foo.conf", kc.Service.ConfigFile)
 
 	nftc := &cfg.Nftables
-	assert.Equal(t, "/etc/nft/nft.d/foo.conf", nftc.OutputFile)
+	assert.Equal(t, "/etc/nft/nft.d/foo.conf", nftc.Service.ConfigFile)
 	assert.Equal(t, "filter", nftc.FilterTableName)
 	assert.Equal(t, "inet", nftc.FilterTableType)
 	assert.Equal(t, "forward", nftc.FilterForwardChainName)
@@ -147,12 +147,12 @@ func TestFillAgentConfig(t *testing.T) {
 	assert.Equal(t, int32(0), cfg.BindPort)
 
 	kc := &cfg.Keepalived
-	assert.Equal(t, "", kc.OutputFile)
+	assert.Equal(t, "", kc.Service.ConfigFile)
 	assert.Equal(t, 0, kc.Priority)
 	assert.Equal(t, "useless", kc.VRRPPassword)
 
 	nftc := &cfg.Nftables
-	assert.Equal(t, "", nftc.OutputFile)
+	assert.Equal(t, "", nftc.Service.ConfigFile)
 	assert.Equal(t, "filter", nftc.FilterTableName)
 	assert.Equal(t, "inet", nftc.FilterTableType)
 	assert.Equal(t, "forward", nftc.FilterForwardChainName)
