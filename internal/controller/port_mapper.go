@@ -7,8 +7,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	"github.com/cloudandheat/cah-loadbalancer/internal/model"
-	"github.com/cloudandheat/cah-loadbalancer/internal/openstack"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 var (

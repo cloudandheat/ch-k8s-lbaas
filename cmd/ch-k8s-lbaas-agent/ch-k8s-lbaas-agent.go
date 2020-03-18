@@ -8,8 +8,8 @@ import (
 
 	"k8s.io/klog"
 
-	"github.com/cloudandheat/cah-loadbalancer/internal/agent"
-	"github.com/cloudandheat/cah-loadbalancer/internal/config"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/agent"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 )
 
 var (

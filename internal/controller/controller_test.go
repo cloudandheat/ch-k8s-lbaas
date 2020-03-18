@@ -33,8 +33,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
-	controllertesting "github.com/cloudandheat/cah-loadbalancer/internal/controller/testing"
-	ostesting "github.com/cloudandheat/cah-loadbalancer/internal/openstack/testing"
+	controllertesting "github.com/cloudandheat/ch-k8s-lbaas/internal/controller/testing"
+	ostesting "github.com/cloudandheat/ch-k8s-lbaas/internal/openstack/testing"
 )
 
 var (

@@ -13,9 +13,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	controllertesting "github.com/cloudandheat/cah-loadbalancer/internal/controller/testing"
-	"github.com/cloudandheat/cah-loadbalancer/internal/model"
-	ostesting "github.com/cloudandheat/cah-loadbalancer/internal/openstack/testing"
+	controllertesting "github.com/cloudandheat/ch-k8s-lbaas/internal/controller/testing"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
+	ostesting "github.com/cloudandheat/ch-k8s-lbaas/internal/openstack/testing"
 )
 
 type workerFixture struct {

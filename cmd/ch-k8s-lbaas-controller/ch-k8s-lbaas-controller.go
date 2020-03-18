@@ -27,10 +27,10 @@ import (
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
-	"github.com/cloudandheat/cah-loadbalancer/internal/config"
-	"github.com/cloudandheat/cah-loadbalancer/internal/controller"
-	"github.com/cloudandheat/cah-loadbalancer/internal/openstack"
-	"github.com/cloudandheat/cah-loadbalancer/internal/signals"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/controller"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/signals"
 )
 
 var (

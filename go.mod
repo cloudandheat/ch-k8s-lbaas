@@ -1,4 +1,4 @@
-module github.com/cloudandheat/cah-loadbalancer
+module github.com/cloudandheat/ch-k8s-lbaas
 
 go 1.13
 

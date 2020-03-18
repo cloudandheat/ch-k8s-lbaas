@@ -12,8 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cloudandheat/cah-loadbalancer/internal/model"
-	ostesting "github.com/cloudandheat/cah-loadbalancer/internal/openstack/testing"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
+	ostesting "github.com/cloudandheat/ch-k8s-lbaas/internal/openstack/testing"
 )
 
 type generatorFixture struct {

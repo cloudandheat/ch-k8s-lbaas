@@ -5,8 +5,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	corelisters "k8s.io/client-go/listers/core/v1"
 
-	"github.com/cloudandheat/cah-loadbalancer/internal/model"
-	"github.com/cloudandheat/cah-loadbalancer/internal/openstack"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 type DefaultLoadBalancerModelGenerator struct {
