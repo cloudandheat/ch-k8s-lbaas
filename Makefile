@@ -3,7 +3,7 @@ binaries=$(patsubst cmd/%,%,$(wildcard cmd/*))
 all: lint test $(binaries)
 
 $(binaries): %:
-	go build ./cmd/$@/$@.go
+	go build -trimpath ./cmd/$@/$@.go
 
 lint:
 	go vet ./...
@@ -17,4 +17,12 @@ test:
 clean:
 	rm -f ch-k8s-lbaas-agent ch-k8s-lbaas-controller
 
-.PHONY: lint fmt all $(binaries) test
+SHA256SUMS: $(binaries)
+	sha256sums $(binaries) > $@
+
+SHA256SUMS.asc:
+	gpg2 --clearsign SHA256SUMS
+
+signed: SHA256SUMS.asc
+
+.PHONY: lint fmt all $(binaries) test signed
