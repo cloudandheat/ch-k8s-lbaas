@@ -1,0 +1,51 @@
+name: Go
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Set up Go 1.13
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.13
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Get dependencies
+      run: |
+        go mod vendor
+
+    - name: Lint
+      run: |
+        go vet ./...
+
+    - name: Test
+      run: |
+        go test ./...
+
+    - name: Build LBaaS controller
+      run: go build -v ./cmd/ch-k8s-lbaas-controller/ch-k8s-lbaas-controller.go
+
+    - name: Build LBaaS agent
+      run: go build -v ./cmd/ch-k8s-lbaas-agent/ch-k8s-lbaas-agent.go
+
+    - uses: actions/upload-artifact@v1
+      with:
+        name: ch-k8s-lbaas-agent
+        path: ch-k8s-lbaas-agent
+
+    - uses: actions/upload-artifact@v1
+      with:
+        name: ch-k8s-lbaas-controller
+        path: ch-k8s-lbaas-controller
