@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 
 	"k8s.io/klog"
@@ -60,7 +61,12 @@ func main() {
 		NftablesConfig:   nftablesConfig,
 	})
 
-	http.ListenAndServe(fmt.Sprintf("%s:%d", fileCfg.BindAddress, fileCfg.BindPort), nil)
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", fileCfg.BindAddress, fileCfg.BindPort))
+	if err != nil {
+		klog.Fatalf("Failed to set up HTTP listener: %s", err.Error())
+	}
+
+	http.Serve(listener, nil)
 }
 
 func init() {
