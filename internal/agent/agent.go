@@ -40,6 +40,7 @@ func diffFiles(oldFile, newFile string) (changed bool, diff string, err error) {
 	output := &strings.Builder{}
 	cmd := exec.Command("diff", "-U3", oldFile, newFile)
 	cmd.Stdout = output
+	cmd.Stderr = os.Stderr
 	err = cmd.Run()
 	if err != nil {
 		exitErr, ok := err.(*exec.ExitError)
@@ -56,11 +57,11 @@ func diffFiles(oldFile, newFile string) (changed bool, diff string, err error) {
 func (m *ConfigManager) MakeBackup() (string, error) {
 	fin, err := os.Open(m.Service.ConfigFile)
 	if err != nil {
-		if err != os.ErrNotExist {
-			return "", err
-		} else {
+		if os.IsNotExist(err) {
 			// nothing to take a backup of
 			return "", nil
+		} else {
+			return "", err
 		}
 	}
 	defer fin.Close()
@@ -84,7 +85,13 @@ func (m *ConfigManager) MakeBackup() (string, error) {
 func (m *ConfigManager) Reload() error {
 	klog.V(4).Infof("executing reload: %#v", m.Service.ReloadCommand)
 	cmd := m.Service.ReloadCommand
-	return exec.Command(cmd[0], cmd[1:]...).Run()
+	cmdObj := exec.Command(cmd[0], cmd[1:]...)
+	cmdObj.Stderr = os.Stderr
+	err := cmdObj.Run()
+	if err != nil {
+		return fmt.Errorf("failed to reload service via %#v: %s", m.Service.ReloadCommand, err.Error())
+	}
+	return nil
 }
 
 func (m *ConfigManager) Check() error {
@@ -94,7 +101,9 @@ func (m *ConfigManager) Check() error {
 		// no check supported, assume the best
 		return nil
 	}
-	return exec.Command(cmd[0], cmd[1:]...).Run()
+	cmdObj := exec.Command(cmd[0], cmd[1:]...)
+	cmdObj.Stderr = os.Stderr
+	return cmdObj.Run()
 }
 
 func (m *ConfigManager) Fix() error {
@@ -107,7 +116,13 @@ func (m *ConfigManager) Fix() error {
 	// deliberately ignoring the Reload() error here; the idea behind this
 	// is that a reload of a crashed service will fail, however, the
 	// FixCommand may restart the service.
-	return exec.Command(cmd[0], cmd[1:]...).Run()
+	cmdObj := exec.Command(cmd[0], cmd[1:]...)
+	cmdObj.Stderr = os.Stderr
+	err = cmdObj.Run()
+	if err != nil {
+		return fmt.Errorf("failed to fix service via %#v: %s", m.Service.ReloadCommand, err.Error())
+	}
+	return nil
 }
 
 func (m *ConfigManager) ReloadAndCheck() error {
@@ -144,7 +159,7 @@ func (m *ConfigManager) WriteWithRollback(cfg *model.LoadBalancer) (bool, error)
 
 	backupFile, err := m.MakeBackup()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to create backup of current configuration: %s", err.Error())
 	}
 	defer os.Remove(backupFile)
 
@@ -152,6 +167,9 @@ func (m *ConfigManager) WriteWithRollback(cfg *model.LoadBalancer) (bool, error)
 	if backupFile != "" {
 		var diff string
 		changed, diff, err = diffFiles(backupFile, fout.Name())
+		if err != nil {
+			return false, fmt.Errorf("failed diff config: %s", err.Error())
+		}
 		if changed {
 			klog.Infof("configuration diff for %s:\n%s", m.Service.ConfigFile, diff)
 		}
