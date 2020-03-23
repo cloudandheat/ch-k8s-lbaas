@@ -4,15 +4,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/utils/openstack/clientconfig"
 
-	gcfg "gopkg.in/gcfg.v1"
 	netutil "k8s.io/apimachinery/pkg/util/net"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog"
@@ -55,25 +52,6 @@ type Config struct {
 type OpenStackClient struct {
 	provider *gophercloud.ProviderClient
 	region   string
-}
-
-func ReadConfig(config io.Reader) (Config, error) {
-	if config == nil {
-		return Config{}, fmt.Errorf("no OpenStack cloud provider config file given")
-	}
-	var cfg Config
-	err := gcfg.FatalOnly(gcfg.ReadInto(&cfg, config))
-
-	return cfg, err
-}
-
-func ReadConfigFromFile(path string) (Config, error) {
-	fin, err := os.Open(path)
-	defer fin.Close()
-	if err != nil {
-		return Config{}, err
-	}
-	return ReadConfig(fin)
 }
 
 func (cfg AuthOpts) ToAuthOptions() gophercloud.AuthOptions {
