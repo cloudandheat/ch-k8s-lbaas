@@ -18,8 +18,21 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
+)
+
+var (
+	metricLastUpdateTimestamp = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ch_k8s_lbaas_agent_last_update_timestamp_seconds",
+			Help: "Timestamp of the last update by status code",
+		},
+		[]string{"status"},
+	)
 )
 
 type ApplyHandlerv1 struct {
@@ -246,6 +259,30 @@ func (h *ApplyHandlerv1) preflightCheck(w http.ResponseWriter, r *http.Request) 
 	return content_length, true
 }
 
+func (h *ApplyHandlerv1) ProcessRequest(lbcfg *model.LoadBalancer) (int, string) {
+	klog.V(1).Infof("received config: %#v", lbcfg)
+
+	changed, err := h.KeepalivedConfig.WriteWithRollback(lbcfg)
+	if err != nil {
+		msg := fmt.Sprintf("Failed to apply keepalived config: %s", err.Error())
+		klog.Error(msg)
+		return 500, msg
+	}
+
+	changed, err = h.NftablesConfig.WriteWithRollback(lbcfg)
+	if err != nil {
+		msg := fmt.Sprintf("Failed to apply nftables config: %s", err.Error())
+		klog.Error(msg)
+		return 500, msg
+	}
+
+	if changed {
+		klog.Infof("Applied configuration update: %#v", lbcfg)
+	}
+
+	return 200, "success"
+}
+
 func (h *ApplyHandlerv1) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	klog.V(5).Infof("incoming request from %s", r.RemoteAddr)
 
@@ -278,41 +315,20 @@ func (h *ApplyHandlerv1) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only at this point do we take the request seriously. Before this point,
+	// it could’ve been an unauthenticated attacker.
+
 	claims, ok = token.Claims.(*model.ConfigClaim)
 	if !ok {
 		klog.Warning("Failed to decode request from token")
-		w.WriteHeader(400) // Unauthorized
+		w.WriteHeader(400) // Bad Request
 		return
 	}
 
 	w.Header().Add("Content-Type", "text/plain")
 
-	lbcfg := &claims.Config
-
-	klog.V(1).Infof("received config: %#v", lbcfg)
-
-	changed, err := h.KeepalivedConfig.WriteWithRollback(lbcfg)
-	if err != nil {
-		msg := fmt.Sprintf("Failed to apply keepalived config: %s", err.Error())
-		klog.Error(msg)
-		w.WriteHeader(500)
-		w.Write([]byte(msg))
-		return
-	}
-
-	changed, err = h.NftablesConfig.WriteWithRollback(lbcfg)
-	if err != nil {
-		msg := fmt.Sprintf("Failed to apply nftables config: %s", err.Error())
-		klog.Error(msg)
-		w.WriteHeader(500)
-		w.Write([]byte(msg))
-		return
-	}
-
-	if changed {
-		klog.Infof("Applied configuration update: %#v", lbcfg)
-	}
-
-	w.WriteHeader(200)
-	w.Write([]byte("success"))
+	status, body := h.ProcessRequest(&claims.Config)
+	w.WriteHeader(status)
+	w.Write([]byte(body))
+	metricLastUpdateTimestamp.With(prometheus.Labels{"status": strconv.FormatInt(int64(status), 10)}).Set(float64(time.Now().UnixNano()) / 1000000000)
 }

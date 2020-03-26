@@ -34,6 +34,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
@@ -95,6 +97,10 @@ func NewController(
 		l3portmanager,
 		serviceInformer.Lister(),
 		nodeInformer.Lister(),
+	)
+
+	prometheus.DefaultRegisterer.MustRegister(
+		NewCollector(portmapper),
 	)
 
 	controller := &Controller{
