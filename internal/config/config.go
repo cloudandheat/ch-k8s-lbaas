@@ -53,6 +53,9 @@ type Agents struct {
 }
 
 type ControllerConfig struct {
+	BindAddress string `toml:"bind-address"`
+	BindPort    int32  `toml:"bind-port"`
+
 	OpenStack openstack.Config `toml:"openstack"`
 	Agents    Agents           `toml:"agents"`
 }
@@ -135,6 +138,12 @@ func FillNftablesConfig(cfg *Nftables) {
 func FillAgentConfig(cfg *AgentConfig) {
 	FillKeepalivedConfig(&cfg.Keepalived)
 	FillNftablesConfig(&cfg.Nftables)
+}
+
+func FillControllerConfig(cfg *ControllerConfig) {
+	if cfg.BindPort == 0 {
+		cfg.BindPort = 15203
+	}
 }
 
 func ValidateAgentConfig(cfg *AgentConfig) error {

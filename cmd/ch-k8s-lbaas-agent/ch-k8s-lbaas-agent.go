@@ -9,6 +9,8 @@ import (
 
 	"k8s.io/klog"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/agent"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 )
@@ -60,6 +62,8 @@ func main() {
 		KeepalivedConfig: keepalivedConfig,
 		NftablesConfig:   nftablesConfig,
 	})
+
+	http.Handle("/metrics", promhttp.Handler())
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", fileCfg.BindAddress, fileCfg.BindPort))
 	if err != nil {

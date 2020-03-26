@@ -8,6 +8,7 @@ require (
 	github.com/gophercloud/gophercloud v0.6.1-0.20191122030953-d8ac278c1c9d
 	github.com/gophercloud/utils v0.0.0-20200302155035-0565566533e4
 	github.com/imdario/mergo v0.3.8 // indirect
+	github.com/prometheus/client_golang v1.5.1
 	github.com/stretchr/testify v1.4.0
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect

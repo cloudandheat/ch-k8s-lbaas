@@ -18,6 +18,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"net"
+	"net/http"
 	"time"
 
 	kubeinformers "k8s.io/client-go/informers"
@@ -26,6 +29,8 @@ import (
 	"k8s.io/klog"
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/controller"
@@ -62,6 +67,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Failed reading config: %s", err.Error())
 	}
+	config.FillControllerConfig(&fileCfg)
 
 	osClient, err := openstack.NewClient(&fileCfg.OpenStack.Global)
 	if err != nil {
@@ -90,6 +96,15 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Failed to configure controller: %s", err.Error())
 	}
+
+	http.Handle("/metrics", promhttp.Handler())
+
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", fileCfg.BindAddress, fileCfg.BindPort))
+	if err != nil {
+		klog.Fatalf("Failed to set up HTTP listener: %s", err.Error())
+	}
+
+	go http.Serve(listener, nil)
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.

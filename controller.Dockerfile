@@ -7,10 +7,13 @@ COPY go.mod go.sum /src/
 WORKDIR /src/
 RUN go mod vendor
 RUN go vet ./... && go test ./...
-RUN go build ./cmd/ch-k8s-lbaas-controller/ch-k8s-lbaas-controller.go
+RUN go build -trimpath ./cmd/ch-k8s-lbaas-controller/ch-k8s-lbaas-controller.go
 
 FROM prom/busybox:glibc
 COPY --from=builder /src/ch-k8s-lbaas-controller /
 
 USER 10000:10000
+
+EXPOSE 15203
+
 ENTRYPOINT ["/ch-k8s-lbaas-controller"]
