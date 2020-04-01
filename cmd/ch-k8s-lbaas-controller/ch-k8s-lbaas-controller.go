@@ -86,12 +86,26 @@ func main() {
 		klog.Fatalf("Failed to configure agent controller: %s", err.Error())
 	}
 
+	servicesInformer := kubeInformerFactory.Core().V1().Services()
+	nodesInformer := kubeInformerFactory.Core().V1().Nodes()
+	endpointsInformer := kubeInformerFactory.Core().V1().Endpoints()
+
+	modelGenerator, err := controller.NewLoadBalancerModelGenerator(
+		fileCfg.BackendLayer,
+		l3portmanager,
+		servicesInformer.Lister(),
+		nodesInformer.Lister(),
+		endpointsInformer.Lister(),
+	)
+
 	lbcontroller, err := controller.NewController(
 		kubeClient,
-		kubeInformerFactory.Core().V1().Services(),
-		kubeInformerFactory.Core().V1().Nodes(),
+		servicesInformer,
+		nodesInformer,
+		endpointsInformer,
 		l3portmanager,
 		agentController,
+		modelGenerator,
 	)
 	if err != nil {
 		klog.Fatalf("Failed to configure controller: %s", err.Error())

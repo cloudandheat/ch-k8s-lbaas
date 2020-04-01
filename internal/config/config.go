@@ -10,6 +10,14 @@ import (
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
+type BackendLayer string
+
+const (
+	BackendLayerNodePort  BackendLayer = "NodePort"
+	BackendLayerClusterIP BackendLayer = "ClusterIP"
+	BackendLayerPod       BackendLayer = "Pod"
+)
+
 type Agent struct {
 	URL string `toml:"url"`
 }
@@ -56,8 +64,9 @@ type ControllerConfig struct {
 	BindAddress string `toml:"bind-address"`
 	BindPort    int32  `toml:"bind-port"`
 
-	OpenStack openstack.Config `toml:"openstack"`
-	Agents    Agents           `toml:"agents"`
+	OpenStack    openstack.Config `toml:"openstack"`
+	Agents       Agents           `toml:"agents"`
+	BackendLayer BackendLayer     `toml:"backend-layer"`
 }
 
 type AgentConfig struct {
@@ -144,6 +153,25 @@ func FillControllerConfig(cfg *ControllerConfig) {
 	if cfg.BindPort == 0 {
 		cfg.BindPort = 15203
 	}
+
+	if cfg.BackendLayer == "" {
+		cfg.BackendLayer = BackendLayerNodePort
+	}
+}
+
+func ValidateControllerConfig(cfg *ControllerConfig) error {
+	switch cfg.BackendLayer {
+	case BackendLayerClusterIP:
+		break
+	case BackendLayerNodePort:
+		break
+	case BackendLayerPod:
+		break
+	default:
+		return fmt.Errorf("backend-layer has an invalid value: %q", cfg.BackendLayer)
+	}
+
+	return nil
 }
 
 func ValidateAgentConfig(cfg *AgentConfig) error {

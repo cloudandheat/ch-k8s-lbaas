@@ -59,7 +59,7 @@ func (f *generatorFixture) addNode(node *corev1.Node) {
 	f.kubeobjects = append(f.kubeobjects, node)
 }
 
-func (f *generatorFixture) newGenerator() (*DefaultLoadBalancerModelGenerator, kubeinformers.SharedInformerFactory) {
+func (f *generatorFixture) newGenerator() (*NodePortLoadBalancerModelGenerator, kubeinformers.SharedInformerFactory) {
 	f.kubeclient = k8sfake.NewSimpleClientset(f.kubeobjects...)
 	k8sI := kubeinformers.NewSharedInformerFactory(f.kubeclient, noResyncPeriodFunc())
 	services := k8sI.Core().V1().Services()
@@ -73,7 +73,7 @@ func (f *generatorFixture) newGenerator() (*DefaultLoadBalancerModelGenerator, k
 		nodes.Informer().GetIndexer().Add(n)
 	}
 
-	g := NewDefaultLoadBalancerModelGenerator(
+	g := NewNodePortLoadBalancerModelGenerator(
 		f.l3portmanager,
 		services.Lister(),
 		nodes.Lister(),
@@ -86,7 +86,7 @@ func (f *generatorFixture) addService(svc *corev1.Service) {
 	f.kubeobjects = append(f.kubeobjects, svc)
 }
 
-func (f *generatorFixture) runWith(body func(g *DefaultLoadBalancerModelGenerator)) {
+func (f *generatorFixture) runWith(body func(g *NodePortLoadBalancerModelGenerator)) {
 	g, k8sI := f.newGenerator()
 	stopCh := make(chan struct{})
 	defer close(stopCh)
@@ -133,7 +133,7 @@ func (f *generatorFixture) matchDestinationAddresses(p model.PortForward) {
 func TestReturnsEmptyModelForEmptyAssignment(t *testing.T) {
 	f := newGeneratorFixture(t)
 
-	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
+	f.runWith(func(g *NodePortLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(map[string]string{})
 		assert.Nil(t, err)
 		assert.NotNil(t, m)
@@ -144,7 +144,7 @@ func TestReturnsEmptyModelForEmptyAssignment(t *testing.T) {
 func TestReturnsEmptyModelForNilAssignment(t *testing.T) {
 	f := newGeneratorFixture(t)
 
-	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
+	f.runWith(func(g *NodePortLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(nil)
 		assert.Nil(t, err)
 		assert.NotNil(t, m)
@@ -167,7 +167,7 @@ func TestSinglePortSingleServiceAssignment(t *testing.T) {
 
 	f.l3portmanager.On("GetInternalAddress", "port-id-1").Return("ingress-ip-1", nil).Times(1)
 
-	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
+	f.runWith(func(g *NodePortLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(a)
 		assert.Nil(t, err)
 		assert.NotNil(t, m)
@@ -208,7 +208,7 @@ func TestSinglePortMultiServiceAssignment(t *testing.T) {
 
 	f.l3portmanager.On("GetInternalAddress", "port-id-1").Return("ingress-ip-1", nil).Times(1)
 
-	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
+	f.runWith(func(g *NodePortLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(a)
 		assert.Nil(t, err)
 		assert.NotNil(t, m)
@@ -262,7 +262,7 @@ func TestMultiPortSingleServiceAssignment(t *testing.T) {
 	f.l3portmanager.On("GetInternalAddress", "port-id-1").Return("ingress-ip-1", nil).Times(1)
 	f.l3portmanager.On("GetInternalAddress", "port-id-2").Return("ingress-ip-2", nil).Times(1)
 
-	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
+	f.runWith(func(g *NodePortLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(a)
 		assert.Nil(t, err)
 		assert.NotNil(t, m)
@@ -328,7 +328,7 @@ func TestMultiPortMultiServiceAssignment(t *testing.T) {
 	f.l3portmanager.On("GetInternalAddress", "port-id-1").Return("ingress-ip-1", nil).Times(1)
 	f.l3portmanager.On("GetInternalAddress", "port-id-2").Return("ingress-ip-2", nil).Times(1)
 
-	f.runWith(func(g *DefaultLoadBalancerModelGenerator) {
+	f.runWith(func(g *NodePortLoadBalancerModelGenerator) {
 		m, err := g.GenerateModel(a)
 		assert.Nil(t, err)
 		assert.NotNil(t, m)

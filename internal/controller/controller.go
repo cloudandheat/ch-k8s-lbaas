@@ -79,8 +79,10 @@ func NewController(
 	kubeclientset kubernetes.Interface,
 	serviceInformer coreinformers.ServiceInformer,
 	nodeInformer coreinformers.NodeInformer,
+	endpointsInformer coreinformers.EndpointsInformer,
 	l3portmanager openstack.L3PortManager,
 	agentController AgentController,
+	generator LoadBalancerModelGenerator,
 ) (*Controller, error) {
 
 	// Create event broadcaster
@@ -93,12 +95,6 @@ func NewController(
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
 	portmapper := NewPortMapper(l3portmanager)
-	generator := NewDefaultLoadBalancerModelGenerator(
-		l3portmanager,
-		serviceInformer.Lister(),
-		nodeInformer.Lister(),
-	)
-
 	prometheus.DefaultRegisterer.MustRegister(
 		NewCollector(portmapper),
 	)
