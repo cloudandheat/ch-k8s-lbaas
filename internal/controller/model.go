@@ -27,7 +27,7 @@ func NewLoadBalancerModelGenerator(
 		), nil
 	case config.BackendLayerClusterIP:
 		return NewClusterIPLoadBalancerModelGenerator(
-			l3portmanager, services, nodes,
+			l3portmanager, services,
 		), nil
 	case config.BackendLayerPod:
 		return NewPodLoadBalancerModelGenerator(
