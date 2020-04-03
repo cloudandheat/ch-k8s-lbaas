@@ -31,7 +31,7 @@ func NewLoadBalancerModelGenerator(
 		), nil
 	case config.BackendLayerPod:
 		return NewPodLoadBalancerModelGenerator(
-			l3portmanager, services, nodes, endpoints,
+			l3portmanager, services, endpoints,
 		), nil
 	default:
 		return nil, fmt.Errorf("invalid backend type: %q", backendLayer)
