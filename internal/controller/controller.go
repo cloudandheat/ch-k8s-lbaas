@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -129,6 +130,42 @@ func NewController(
 		DeleteFunc: controller.deleteObject,
 	})
 
+	if nodeInformer != nil {
+		nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: controller.handleAuxUpdated,
+			UpdateFunc: func(old, new interface{}) {
+				oldNode := old.(*corev1.Node)
+				newNode := new.(*corev1.Node)
+
+				// addresses is all we care about
+				if reflect.DeepEqual(oldNode.Status.Addresses, newNode.Status.Addresses) {
+					return
+				}
+
+				controller.handleAuxUpdated(newNode)
+			},
+			DeleteFunc: controller.handleAuxUpdated,
+		})
+	}
+
+	if endpointsInformer != nil {
+		endpointsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: controller.handleAuxUpdated,
+			UpdateFunc: func(old, new interface{}) {
+				oldEndpoints := old.(*corev1.Endpoints)
+				newEndpoints := new.(*corev1.Endpoints)
+
+				// addresses is all we care about
+				if reflect.DeepEqual(oldEndpoints.Subsets, newEndpoints.Subsets) {
+					return
+				}
+
+				controller.handleAuxUpdated(newEndpoints)
+			},
+			DeleteFunc: controller.handleAuxUpdated,
+		})
+	}
+
 	return controller, nil
 }
 
@@ -229,4 +266,10 @@ func (c *Controller) deleteObject(obj interface{}) {
 		job.Annotations[k] = v
 	}
 	c.worker.EnqueueJob(job)
+}
+
+func (c *Controller) handleAuxUpdated(obj interface{}) {
+	// FIXME: it would probably be good to filter this a little instead of just
+	// updating on all changes.
+	c.worker.EnqueueJob(&UpdateConfigJob{})
 }

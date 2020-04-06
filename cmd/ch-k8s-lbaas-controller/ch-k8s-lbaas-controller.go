@@ -98,6 +98,18 @@ func main() {
 		endpointsInformer.Lister(),
 	)
 
+	if fileCfg.BackendLayer != config.BackendLayerNodePort {
+		// Setting the nodes informer to nil causes the controller not
+		// to subscribe to it, saving cycles.
+		nodesInformer = nil
+	}
+
+	if fileCfg.BackendLayer != config.BackendLayerPod {
+		// Setting the endpoints informer to nil causes the controller
+		// not to subscribe to it, saving cycles.
+		endpointsInformer = nil
+	}
+
 	lbcontroller, err := controller.NewController(
 		kubeClient,
 		servicesInformer,
