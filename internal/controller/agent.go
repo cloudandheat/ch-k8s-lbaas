@@ -100,6 +100,9 @@ func (c *HTTPAgentController) PushConfig(m *model.LoadBalancer) error {
 			errors = append(errors, err)
 			continue
 		}
+		if resp.Body != nil {
+			defer resp.Body.Close()
+		}
 		if resp.StatusCode != 200 {
 			errors = append(errors, fmt.Errorf(
 				"failed to push config to agent %q: HTTP status %d",
