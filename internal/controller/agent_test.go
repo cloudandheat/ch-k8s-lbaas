@@ -94,12 +94,22 @@ func (f *acFixture) run(body func(c *HTTPAgentController)) {
 	f.client.AssertExpectations(f.t)
 }
 
+type dummyBody struct{}
+
+func (d *dummyBody) Close() error {
+	return nil
+}
+
+func (d *dummyBody) Read(p []byte) (n int, err error) {
+	return 0, io.EOF
+}
+
 func TestPushJWTViaHTTP(t *testing.T) {
 	f := newACFixture(t)
 	m := &model.LoadBalancer{}
 
-	f.client.On("Post", "http://127.1.0.1/v1/apply", "application/jwt", *m).Return(&http.Response{StatusCode: 200}, nil).Times(1)
-	f.client.On("Post", "http://127.1.0.2/subpath/v1/apply", "application/jwt", *m).Return(&http.Response{StatusCode: 200}, nil).Times(1)
+	f.client.On("Post", "http://127.1.0.1/v1/apply", "application/jwt", *m).Return(&http.Response{StatusCode: 200, Body: &dummyBody{}}, nil).Times(1)
+	f.client.On("Post", "http://127.1.0.2/subpath/v1/apply", "application/jwt", *m).Return(&http.Response{StatusCode: 200, Body: &dummyBody{}}, nil).Times(1)
 
 	f.run(func(c *HTTPAgentController) {
 		err := c.PushConfig(m)

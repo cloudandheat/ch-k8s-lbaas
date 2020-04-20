@@ -9,6 +9,10 @@ import (
 
 const (
 	controllerCfgBlob = `
+bind-address = "127.0.0.1"
+bind-port = 1234
+backend-layer = "Pod"
+
 [openstack.auth]
 auth-url="http://foo"
 user-id="012345"

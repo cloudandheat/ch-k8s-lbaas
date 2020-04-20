@@ -9,28 +9,24 @@ import (
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
-type DefaultLoadBalancerModelGenerator struct {
+type NodePortLoadBalancerModelGenerator struct {
 	l3portmanager openstack.L3PortManager
 	services      corelisters.ServiceLister
 	nodes         corelisters.NodeLister
 }
 
-type LoadBalancerModelGenerator interface {
-	GenerateModel(portAssignment map[string]string) (*model.LoadBalancer, error)
-}
-
-func NewDefaultLoadBalancerModelGenerator(
+func NewNodePortLoadBalancerModelGenerator(
 	l3portmanager openstack.L3PortManager,
 	services corelisters.ServiceLister,
-	nodes corelisters.NodeLister) *DefaultLoadBalancerModelGenerator {
-	return &DefaultLoadBalancerModelGenerator{
+	nodes corelisters.NodeLister) *NodePortLoadBalancerModelGenerator {
+	return &NodePortLoadBalancerModelGenerator{
 		l3portmanager: l3portmanager,
 		services:      services,
 		nodes:         nodes,
 	}
 }
 
-func (g *DefaultLoadBalancerModelGenerator) getDestinationAddresses() (result []string, err error) {
+func (g *NodePortLoadBalancerModelGenerator) getDestinationAddresses() (result []string, err error) {
 	nodes, err := g.nodes.List(labels.Everything())
 	if err != nil {
 		return nil, err
@@ -49,7 +45,7 @@ func (g *DefaultLoadBalancerModelGenerator) getDestinationAddresses() (result []
 	return result, nil
 }
 
-func (g *DefaultLoadBalancerModelGenerator) GenerateModel(portAssignment map[string]string) (*model.LoadBalancer, error) {
+func (g *NodePortLoadBalancerModelGenerator) GenerateModel(portAssignment map[string]string) (*model.LoadBalancer, error) {
 	addresses, err := g.getDestinationAddresses()
 	if err != nil {
 		return nil, err

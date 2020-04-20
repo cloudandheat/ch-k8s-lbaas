@@ -73,8 +73,10 @@ func (f *fixture) newController() (*Controller, kubeinformers.SharedInformerFact
 		f.kubeclient,
 		k8sI.Core().V1().Services(),
 		k8sI.Core().V1().Nodes(),
+		k8sI.Core().V1().Endpoints(),
 		ostesting.NewMockL3PortManager(),
 		controllertesting.NewMockAgentController(),
+		controllertesting.NewMockLoadBalancerModelGenerator(),
 	)
 	if err != nil {
 		klog.Fatalf("failed to construct controller: %s", err.Error())

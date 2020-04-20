@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"k8s.io/klog"
 
@@ -70,7 +71,14 @@ func main() {
 		klog.Fatalf("Failed to set up HTTP listener: %s", err.Error())
 	}
 
-	http.Serve(listener, nil)
+	s := &http.Server{
+		Handler: nil,
+		ReadTimeout: 2 * time.Second,
+		ReadHeaderTimeout: 1 * time.Second,
+		IdleTimeout: 10 * time.Second,
+	}
+
+	s.Serve(listener)
 }
 
 func init() {
