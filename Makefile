@@ -3,7 +3,7 @@ binaries=$(patsubst cmd/%,%,$(wildcard cmd/*))
 all: lint test $(binaries)
 
 $(binaries): %:
-	go build -trimpath ./cmd/$@/$@.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath ./cmd/$@/$@.go
 
 lint:
 	go vet ./...
