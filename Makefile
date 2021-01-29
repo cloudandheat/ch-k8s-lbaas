@@ -18,9 +18,9 @@ clean:
 	rm -f ch-k8s-lbaas-agent ch-k8s-lbaas-controller
 
 SHA256SUMS: $(binaries)
-	sha256sums $(binaries) > $@
+	sha256sum $(binaries) > $@
 
-SHA256SUMS.asc:
+SHA256SUMS.asc: SHA256SUMS
 	gpg2 --clearsign SHA256SUMS
 
 signed: SHA256SUMS.asc
