@@ -23,6 +23,7 @@ import (
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
+	"os"
 )
 
 func newNftablesGenerator() *NftablesGenerator {
@@ -75,6 +76,12 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 						DestinationPort:      30443,
 						DestinationAddresses: []string{"192.168.0.1", "192.168.0.2"},
 					},
+					{
+						InboundPort: 8888,
+						Protocol: corev1.ProtocolTCP,
+						DestinationPort: 38888,
+						DestinationAddresses: []string{},
+					},
 				},
 			},
 			{
@@ -95,7 +102,7 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, scfg)
 	assert.NotNil(t, scfg.Forwards)
-	assert.Equal(t, 3, len(scfg.Forwards))
+	assert.Equal(t, 4, len(scfg.Forwards))
 
 	fwd := scfg.Forwards[0]
 	assert.Equal(t, "tcp", fwd.Protocol)
@@ -112,6 +119,12 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 	assert.Equal(t, m.Ingress[0].Ports[1].DestinationAddresses, fwd.DestinationAddresses)
 
 	fwd = scfg.Forwards[2]
+	assert.Equal(t, "tcp", fwd.Protocol)
+	assert.Empty(t, fwd.DestinationAddresses)
+	// Look at the generated template if needed (`go test -v`)
+	g.WriteStructuredConfig(scfg, os.Stdout)
+	
+	fwd = scfg.Forwards[3]
 	assert.Equal(t, "udp", fwd.Protocol)
 	assert.Equal(t, m.Ingress[1].Address, fwd.InboundIP)
 	assert.Equal(t, m.Ingress[1].Ports[0].InboundPort, fwd.InboundPort)
