@@ -38,7 +38,7 @@ table {{ .FilterTableType }} {{ .FilterTableName }} {
 table ip {{ .NATTableName }} {
 	chain {{ .NATPreroutingChainName }} {
 {{ range $fwd := .Forwards }}
-{{ if ne ($fwd.DestinationAddresses | len) 0 }}		
+{{ if ne ($fwd.DestinationAddresses | len) 0 }}
 	ip daddr {{ $fwd.InboundIP }} {{ $fwd.Protocol }} dport {{ $fwd.InboundPort }} mark set {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ct mark set meta mark dnat to numgen inc mod {{ $fwd.DestinationAddresses | len }} map {
 {{- range $index, $daddr := $fwd.DestinationAddresses }}{{ $index }} : {{ $daddr }}, {{ end -}}
 		} : {{ $fwd.DestinationPort }};

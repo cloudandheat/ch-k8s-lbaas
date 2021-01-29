@@ -123,7 +123,7 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 	assert.Empty(t, fwd.DestinationAddresses)
 	// Look at the generated template if needed (`go test -v`)
 	g.WriteStructuredConfig(scfg, os.Stdout)
-	
+
 	fwd = scfg.Forwards[3]
 	assert.Equal(t, "udp", fwd.Protocol)
 	assert.Equal(t, m.Ingress[1].Address, fwd.InboundIP)
