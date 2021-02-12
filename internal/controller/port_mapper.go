@@ -89,6 +89,7 @@ func (c *PortMapperImpl) createNewL3Port() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	klog.Infof("created new port with portID=%v", portID)
 	c.emplaceL3Port(portID)
 	return portID, nil
 }
@@ -182,6 +183,7 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 			// if no existing port can fit the bill, we move on to create a new
 			// port
 			portID, err = c.createNewL3Port()
+			klog.Infof("Created new port with portID=%v", portID)
 			if err != nil {
 				// if that fails too, we simply cannot map the service.
 				return err
@@ -195,6 +197,7 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 
 	if hasExistingService {
 		// we have to unmap the existing service first
+		klog.Infof("Trying to unmap service %q", id)
 		err = c.UnmapService(id)
 		if err != nil {
 			panic(fmt.Sprintf("UnmapService during MapService failed. Invariants are now broken."))
@@ -203,7 +206,9 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 
 	c.services[key] = svcModel
 	l3port := c.l3ports[portID]
+	klog.Infof("Lookup l3port[%v]=%v", portID, l3port)
 	for _, port := range svcModel.Ports {
+		klog.Infof("Allocating port %v to service %v", port, key)
 		l3port.Allocations[port.Port] = key
 	}
 

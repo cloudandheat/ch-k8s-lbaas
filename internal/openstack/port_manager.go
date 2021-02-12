@@ -166,6 +166,7 @@ func (pm *OpenStackL3PortManager) ProvisionPort() (string, error) {
 	}
 
 	cleanupPort := func() {
+		klog.Infof("Deleting port %v", port.ID)
 		deleteErr := portsv2.Delete(pm.client, port.ID).ExtractErr()
 		if deleteErr != nil {
 			klog.Warningf(
@@ -223,6 +224,7 @@ func (pm *OpenStackL3PortManager) deleteUnusedFloatingIPs() error {
 	// even in case of an error, we can at least try to delete the fips we
 	// already gathered
 	for _, fipID := range toDelete {
+		klog.Infof("Trying to delete floating ip %q", fipID)
 		deleteErr := floatingipsv2.Delete(pm.client, fipID).ExtractErr()
 		if deleteErr != nil {
 			klog.Warningf(
@@ -237,6 +239,7 @@ func (pm *OpenStackL3PortManager) deleteUnusedFloatingIPs() error {
 
 func (pm *OpenStackL3PortManager) CleanUnusedPorts(usedPorts []string) error {
 	ports, err := pm.cache.GetPorts()
+	klog.Infof("Used ports=%q", usedPorts)
 	if err != nil {
 		return err
 	}
@@ -252,6 +255,7 @@ func (pm *OpenStackL3PortManager) CleanUnusedPorts(usedPorts []string) error {
 			continue
 		}
 
+		klog.Infof("Trying to delete port %q", port.ID)
 		// port not in use, issue deletion
 		err := portsv2.Delete(pm.client, port.ID).ExtractErr()
 		if err != nil {
@@ -288,6 +292,11 @@ func (pm *OpenStackL3PortManager) GetExternalAddress(portID string) (string, str
 		return "", "", err
 	}
 
+	if port == nil {
+		klog.Warningf("Port with portID %q is nil", portID)
+		return "", "", ErrPortIsNil
+	}
+
 	if pm.cfg.UseFloatingIPs {
 		if fip == nil {
 			return "", "", ErrFloatingIPMissing
@@ -307,6 +316,10 @@ func (pm *OpenStackL3PortManager) GetInternalAddress(portID string) (string, err
 	port, _, err := pm.cache.GetPortByID(portID)
 	if err != nil {
 		return "", err
+	}
+	if port == nil {
+		klog.Warningf("Port with portID %q is nil", portID)
+		return "", ErrPortIsNil
 	}
 
 	if len(port.FixedIPs) == 0 {
