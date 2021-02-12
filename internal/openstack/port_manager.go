@@ -34,8 +34,10 @@ const (
 )
 
 var (
-	ErrFloatingIPMissing = errors.New("Expected floating IP was not found")
-	ErrFixedIPMissing    = errors.New("Port has no IP address assigned")
+	ErrFloatingIPMissing   = errors.New("Expected floating IP was not found")
+	ErrFixedIPMissing      = errors.New("Port has no IP address assigned")
+	ErrPortIsNil           = errors.New("Port is nil")
+	ErrNoFloatingIPCreated = errors.New("No floating IP was created by OpenStack")
 )
 
 // We need options which are not included in the default gophercloud struct
@@ -185,8 +187,9 @@ func (pm *OpenStackL3PortManager) ProvisionPort() (string, error) {
 	if pm.cfg.UseFloatingIPs {
 		err = pm.provisionFloatingIP(port.ID)
 		if err != nil {
+			klog.Warningf("Couldn't provide floating ip for port=%v: %s", port.ID, err)
 			cleanupPort()
-			return "", nil
+			return "", ErrNoFloatingIPCreated
 		}
 	}
 
