@@ -105,6 +105,7 @@ func (g *PodLoadBalancerModelGenerator) GenerateModel(portAssignment map[string]
 
 		ingress, ok := ingressMap[portID]
 		if !ok {
+			klog.Infof("Calling GetInternalAddress for portID=%q, serviceKey=%q", portID, serviceKey)
 			ingressIP, err := g.l3portmanager.GetInternalAddress(portID)
 			if err != nil {
 				return nil, err
