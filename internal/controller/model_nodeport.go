@@ -15,12 +15,21 @@
 package controller
 
 import (
+	"errors"
+	"net"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/klog"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
+)
+
+var (
+	ErrInvalidIpAddress = errors.New("the string is not a valid textual representation of an IP address")
 )
 
 type NodePortLoadBalancerModelGenerator struct {
@@ -40,27 +49,51 @@ func NewNodePortLoadBalancerModelGenerator(
 	}
 }
 
-func (g *NodePortLoadBalancerModelGenerator) getDestinationAddresses() (result []string, err error) {
+func validateIpAddress(ipString string) error {
+	ipParsed := net.ParseIP(ipString)
+	if ipParsed != nil {
+		return nil
+	}
+	return ErrInvalidIpAddress
+}
+
+func isIPv4Address(ipString string) bool {
+	return strings.Count(ipString, ":") == 0 && strings.Count(ipString, ".") == 3
+}
+
+func isIPv6Address(ipString string) bool {
+	return strings.Count(ipString, ":") >= 2
+}
+
+func (g *NodePortLoadBalancerModelGenerator) getDestinationAddresses() (addressesV4 []string, addressesV6 []string, err error) {
 	nodes, err := g.nodes.List(labels.Everything())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	result = []string{}
 	for _, node := range nodes {
 		for _, addr := range node.Status.Addresses {
 			if addr.Type != corev1.NodeInternalIP {
 				continue
 			}
-			result = append(result, addr.Address)
+			if validateIpAddress(addr.Address) != nil {
+				continue
+			}
+			if isIPv4Address(addr.Address) {
+				addressesV4 = append(addressesV4, addr.Address)
+			} else if isIPv6Address(addr.Address) {
+				addressesV6 = append(addressesV6, addr.Address)
+			} else {
+				continue
+			}
 		}
 	}
 
-	return result, nil
+	return addressesV4, addressesV6, nil
 }
 
 func (g *NodePortLoadBalancerModelGenerator) GenerateModel(portAssignment map[string]string) (*model.LoadBalancer, error) {
-	addresses, err := g.getDestinationAddresses()
+	addressesV4, addressesV6, err := g.getDestinationAddresses()
 	if err != nil {
 		return nil, err
 	}
@@ -88,12 +121,30 @@ func (g *NodePortLoadBalancerModelGenerator) GenerateModel(portAssignment map[st
 			}
 		}
 
+		if validateIpAddress(ingress.Address) != nil {
+			continue
+		}
+
+		var destAddresses []string
+
+		if isIPv4Address(ingress.Address) {
+			destAddresses = append(destAddresses, addressesV4...)
+		} else if isIPv6Address(ingress.Address) {
+			destAddresses = append(destAddresses, addressesV6...)
+		} else {
+			klog.Warningf(
+				"could not determine address family of ingress IP %q for service %q",
+				ingress.Address,
+				svc.Name)
+			continue
+		}
+
 		for _, svcPort := range svc.Spec.Ports {
 			ingress.Ports = append(ingress.Ports, model.PortForward{
 				Protocol:             svcPort.Protocol,
 				InboundPort:          svcPort.Port,
 				DestinationPort:      svcPort.NodePort,
-				DestinationAddresses: addresses,
+				DestinationAddresses: destAddresses,
 			})
 		}
 
