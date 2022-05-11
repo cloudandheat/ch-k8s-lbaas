@@ -16,7 +16,6 @@ package openstack
 
 import (
 	"errors"
-	"time"
 
 	"github.com/gophercloud/gophercloud"
 	tags "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
@@ -75,7 +74,7 @@ type OpenStackL3PortManager struct {
 	client    *gophercloud.ServiceClient
 	networkID string
 	cfg       *NetworkingOpts
-	cache     PortCache
+	ports     PortClient
 }
 
 func (client *OpenStackClient) NewOpenStackL3PortManager(networkConfig *NetworkingOpts) (*OpenStackL3PortManager, error) {
@@ -95,9 +94,8 @@ func (client *OpenStackClient) NewOpenStackL3PortManager(networkConfig *Networki
 		client:    networkingclient,
 		cfg:       networkConfig,
 		networkID: networkID,
-		cache: NewPortCache(
+		ports: NewPortClient(
 			networkingclient,
-			30*time.Second,
 			TagLBManagedPort,
 			networkConfig.UseFloatingIPs,
 		),
@@ -194,7 +192,6 @@ func (pm *OpenStackL3PortManager) ProvisionPort() (string, error) {
 		}
 	}
 
-	pm.cache.Invalidate()
 	return port.ID, nil
 }
 
@@ -238,7 +235,7 @@ func (pm *OpenStackL3PortManager) deleteUnusedFloatingIPs() error {
 }
 
 func (pm *OpenStackL3PortManager) CleanUnusedPorts(usedPorts []string) error {
-	ports, err := pm.cache.GetPorts()
+	ports, err := pm.ports.GetPorts()
 	klog.Infof("Used ports=%q", usedPorts)
 	if err != nil {
 		return err
@@ -265,14 +262,13 @@ func (pm *OpenStackL3PortManager) CleanUnusedPorts(usedPorts []string) error {
 	}
 
 	if anyDeleted {
-		pm.cache.Invalidate()
 		return pm.deleteUnusedFloatingIPs()
 	}
 	return nil
 }
 
 func (pm *OpenStackL3PortManager) GetAvailablePorts() ([]string, error) {
-	ports, err := pm.cache.GetPorts()
+	ports, err := pm.ports.GetPorts()
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +283,7 @@ func (pm *OpenStackL3PortManager) GetAvailablePorts() ([]string, error) {
 }
 
 func (pm *OpenStackL3PortManager) GetExternalAddress(portID string) (string, string, error) {
-	port, fip, err := pm.cache.GetPortByID(portID)
+	port, fip, err := pm.ports.GetPortByID(portID)
 	if err != nil {
 		return "", "", err
 	}
@@ -313,7 +309,7 @@ func (pm *OpenStackL3PortManager) GetExternalAddress(portID string) (string, str
 }
 
 func (pm *OpenStackL3PortManager) GetInternalAddress(portID string) (string, error) {
-	port, _, err := pm.cache.GetPortByID(portID)
+	port, _, err := pm.ports.GetPortByID(portID)
 	if err != nil {
 		return "", err
 	}
