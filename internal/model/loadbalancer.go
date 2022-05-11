@@ -17,7 +17,7 @@ package model
 import (
 	corev1 "k8s.io/api/core/v1"
 
-	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 )
 
 type PortForward struct {

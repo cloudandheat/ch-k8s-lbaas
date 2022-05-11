@@ -77,9 +77,9 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 						DestinationAddresses: []string{"192.168.0.1", "192.168.0.2"},
 					},
 					{
-						InboundPort: 8888,
-						Protocol: corev1.ProtocolTCP,
-						DestinationPort: 38888,
+						InboundPort:          8888,
+						Protocol:             corev1.ProtocolTCP,
+						DestinationPort:      38888,
 						DestinationAddresses: []string{},
 					},
 				},

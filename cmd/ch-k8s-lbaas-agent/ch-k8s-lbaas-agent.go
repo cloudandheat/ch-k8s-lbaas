@@ -86,10 +86,10 @@ func main() {
 	}
 
 	s := &http.Server{
-		Handler: nil,
-		ReadTimeout: 2 * time.Second,
+		Handler:           nil,
+		ReadTimeout:       2 * time.Second,
 		ReadHeaderTimeout: 1 * time.Second,
-		IdleTimeout: 10 * time.Second,
+		IdleTimeout:       10 * time.Second,
 	}
 
 	s.Serve(listener)

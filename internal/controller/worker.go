@@ -15,12 +15,14 @@
 package controller
 
 import (
+	"context"
 	goerrors "errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -91,7 +93,7 @@ func (w *Worker) takeOverService(svcSrc *corev1.Service) error {
 
 	klog.Infof("Taking over service %s/%s", svcSrc.Namespace, svcSrc.Name)
 
-	_, err := w.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(svc)
+	_, err := w.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -106,7 +108,7 @@ func (w *Worker) releaseService(svcSrc *corev1.Service) error {
 		// as a reminder that we need to do more cleanup, too
 		svc := svcSrc.DeepCopy()
 		svc.Status.LoadBalancer.Ingress = nil
-		_, err := w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(svc)
+		_, err := w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(context.TODO(), svc, metav1.UpdateOptions{})
 
 		if err != nil {
 			return err
@@ -128,7 +130,7 @@ func (w *Worker) releaseService(svcSrc *corev1.Service) error {
 
 	klog.Infof("Releasing service %s/%s", svcSrc.Namespace, svcSrc.Name)
 
-	_, err := w.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(svc)
+	_, err := w.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -150,7 +152,7 @@ func (w *Worker) mapService(svcSrc *corev1.Service) (updated bool, err error) {
 	if oldPortID == "" && svcSrc.Status.LoadBalancer.Ingress != nil {
 		svc := svcSrc.DeepCopy()
 		svc.Status.LoadBalancer.Ingress = nil
-		_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(svc)
+		_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(context.TODO(), svc, metav1.UpdateOptions{})
 		w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceUnassignedStale, MessageEventServiceUnassignedStale)
 		return true, err
 	}
@@ -170,7 +172,7 @@ func (w *Worker) mapService(svcSrc *corev1.Service) (updated bool, err error) {
 		svc := svcSrc.DeepCopy()
 		if svc.Status.LoadBalancer.Ingress == nil {
 			setPortAnnotation(svc, newPortID)
-			_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(svc)
+			_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
 
 			if oldPortID == "" {
 				w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceMapped, fmt.Sprintf(MessageEventServiceMapped, newPortID))
@@ -179,7 +181,7 @@ func (w *Worker) mapService(svcSrc *corev1.Service) (updated bool, err error) {
 			}
 		} else {
 			svc.Status.LoadBalancer.Ingress = nil
-			_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(svc)
+			_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(context.TODO(), svc, metav1.UpdateOptions{})
 			w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceUnassignedForRemapping, MessageEventServiceUnassignedForRemapping)
 		}
 
@@ -207,10 +209,11 @@ func (w *Worker) updateServiceStatus(svcSrc *corev1.Service) (updated bool, err 
 	newIngress := corev1.LoadBalancerIngress{IP: ipaddress, Hostname: hostname}
 
 	if len(svcSrc.Status.LoadBalancer.Ingress) != 1 ||
-		svcSrc.Status.LoadBalancer.Ingress[0] != newIngress {
+		svcSrc.Status.LoadBalancer.Ingress[0].Hostname != newIngress.Hostname ||
+		svcSrc.Status.LoadBalancer.Ingress[0].IP != newIngress.IP {
 		svc := svcSrc.DeepCopy()
 		svc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{newIngress}
-		_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(svc)
+		_, err = w.kubeclientset.CoreV1().Services(svcSrc.Namespace).UpdateStatus(context.TODO(), svc, metav1.UpdateOptions{})
 		w.recorder.Event(svc, corev1.EventTypeNormal, EventServiceAssigned, fmt.Sprintf(MessageEventServiceAssigned, newIngress.IP))
 		return true, err
 	}

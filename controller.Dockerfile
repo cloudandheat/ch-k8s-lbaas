@@ -1,4 +1,4 @@
-FROM golang:1.13 AS builder
+FROM golang:1.18 AS builder
 
 COPY cmd/ /src/cmd/
 COPY internal/ /src/internal/
