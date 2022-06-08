@@ -35,7 +35,7 @@ type UncachedClient struct {
 }
 
 type PortClient interface {
-	GetPorts() ([]*portsv2.Port, error)
+	GetPorts() ([]portsv2.Port, error)
 	GetPortByID(ID string) (*portsv2.Port, *floatingipsv2.FloatingIP, error)
 }
 
@@ -47,7 +47,7 @@ func NewPortClient(networkingclient *gophercloud.ServiceClient, tag string, useF
 	}
 }
 
-func (pc *UncachedClient) GetPorts() (ports []*portsv2.Port, err error) {
+func (pc *UncachedClient) GetPorts() (ports []portsv2.Port, err error) {
 	err = portsv2.List(
 		pc.client,
 		portsv2.ListOpts{Tags: pc.tag},
@@ -57,7 +57,7 @@ func (pc *UncachedClient) GetPorts() (ports []*portsv2.Port, err error) {
 			return false, err
 		}
 		for _, found_port := range fetched_ports {
-			ports = append(ports, &found_port)
+			ports = append(ports, found_port)
 		}
 		return true, nil
 	})
