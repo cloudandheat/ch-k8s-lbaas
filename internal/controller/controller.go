@@ -73,6 +73,8 @@ type Controller struct {
 	// Kubernetes API.
 	recorder record.EventRecorder
 
+	workerStartupLock sync.Mutex
+	workerStarted bool
 	worker *Worker
 }
 
@@ -191,6 +193,9 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	c.worker.EnqueueJob(&CleanupJob{})
 
 	klog.Info("Starting workers")
+	c.workerStartupLock.Lock()
+	c.workerStarted = true
+	c.workerStartupLock.Unlock()
 	go wait.Until(c.worker.Run, time.Second, stopCh)
 
 	// 17s is mostly arbitrarily chosen. Here are some guidelines I applied:
@@ -235,7 +240,44 @@ func (c *Controller) handleObject(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.worker.EnqueueJob(&SyncServiceJob{identifier})
+
+	requeuePolicy := RequeueTail
+	c.workerStartupLock.Lock()
+	// technically, it's ok if we release the lock after the if, but with
+	// golangs error handling being what it is, I prefer to use a defer here and
+	// hold the lock slightly longer than necessary.
+	defer c.workerStartupLock.Unlock()
+	if !c.workerStarted {
+		// We are in the phase before all services have been synced. During this
+		// phase, we execute the sync jobs right away. This is to work around an
+		// issue where the queue apparently re-orders jobs, causing the cleanup
+		// to happen before all services have been seen, causing IPs to get
+		// deleted
+		// (see https://github.com/cloudandheat/ch-k8s-lbaas/issues/30 for
+		// context).
+
+		// One option would be to call SyncServiceJob{identifier}.Run(..) always
+		// but that has the downside that during normal operation, we do not
+		// honour the exponential back-off implemented by the work queue. We
+		// want to honour that, however.
+
+		// In addition, we MUST NOT do this while the worker queue is actually
+		// already running -- otherwise we can get into funny race conditions on
+		// the port mapper objects for instance.
+
+		job := SyncServiceJob{identifier}
+		requeuePolicy, err = job.Run(c.worker)
+		if err != nil {
+			klog.Errorf("failed to sync service in handleObject: %s", err)
+		}
+	}
+
+	// If (the inlined job failed above *and* requested a requeue) *or* if we
+	// have not executed an inlined job (mind the default assigned to
+	// requeuePolicy), we need to enqueue it.
+	if requeuePolicy == RequeueTail {
+		c.worker.EnqueueJob(&SyncServiceJob{identifier})
+	}
 }
 
 func (c *Controller) deleteObject(obj interface{}) {
