@@ -188,6 +188,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	if ok := cache.WaitForCacheSync(stopCh, c.servicesSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
+	klog.Info("Informer caches are synchronized, enqueueing job to remove the cleanup barrier")
 	// we now enqueue a barrier clear job, as well as a cleanup job
 	c.worker.EnqueueJob(&RemoveCleanupBarrierJob{})
 	c.worker.EnqueueJob(&CleanupJob{})
