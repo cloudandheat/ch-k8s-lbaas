@@ -186,20 +186,31 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	if ok := cache.WaitForCacheSync(stopCh, c.servicesSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
-	// we now enqueue a barrier clear job, as well as a cleanup job
-	c.worker.EnqueueJob(&RemoveCleanupBarrierJob{})
-	c.worker.EnqueueJob(&CleanupJob{})
+	klog.Info("Informer caches are synchronized, enqueueing job to remove the cleanup barrier")
 
 	klog.Info("Starting workers")
 	go wait.Until(c.worker.Run, time.Second, stopCh)
 
-	// 17s is mostly arbitrarily chosen. Here are some guidelines I applied:
+	// 907s is chosen because:
 	//
-	// 1. either sligthly larger or massively less than the 30s interval used
-	//    for the full sync of the Service listener
-	// 2. somewhat prime so that the intervals between this job and other jobs
-	//    becomes a bit random
-	go wait.Until(c.periodicCleanup, 17*time.Second, stopCh)
+	// - it is prime, which randomizes the cleanups relative ordering against
+	//   other jobs.
+	// - it is greater than three times the sync interval of the informer
+	//
+	// This way, we can be reasonably confident that we have heard about all
+	// currently active services before we attempt to clean any seemingly
+	// unused ports.
+	//
+	// In the past, there have been problems with ports being deleted even
+	// though they were still in use by services. This had been caused by the
+	// cleanup job running too early, despite the fact that we block on the
+	// informer sync above; apparently, the informer sync wait sometimes
+	// returns too early or we are missing events for some other, unclear
+	// reason.
+	//
+	// In order to mitigate this problem, we now ensure that the first cleanup
+	// happens only after three sync intervals (900 seconds).
+	go wait.Until(c.periodicCleanup, 907*time.Second, stopCh)
 
 	klog.Info("Started workers")
 	<-stopCh
@@ -209,8 +220,21 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 }
 
 func (c *Controller) periodicCleanup() {
-	klog.Info("Triggering periodic cleanup")
-	c.worker.EnqueueJob(&CleanupJob{})
+	// This is called "immediately" after the workers have started. We do not
+	// want to schedule a cleanup immediately, though (observe the long comment
+	// in the Run() function). Hence, we do not remove the cleanup barrier
+	// there, but use the AllowCleanups flag here to decide whether it is the
+	// first run.
+	if c.worker.AllowCleanups {
+		klog.Info("Triggering periodic cleanup")
+		c.worker.EnqueueJob(&CleanupJob{})
+	} else {
+		// As this *is* the first run, we only remove the cleanup barrier; the
+		// cleanup itself will be triggered on a subsequent run, after the
+		// barrier has been removed by this job.
+		klog.Info("Triggering removal of the cleanup barrier")
+		c.worker.EnqueueJob(&RemoveCleanupBarrierJob{})
+	}
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
