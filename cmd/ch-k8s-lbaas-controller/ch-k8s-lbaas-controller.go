@@ -62,7 +62,7 @@ func main() {
 		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
 	}
 
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*300)
 
 	fileCfg, err := config.ReadControllerConfigFromFile(configPath)
 	if err != nil {
