@@ -85,6 +85,7 @@ func copyAddresses(in []string) []string {
 	return result
 }
 
+// Maps from k8s.io/api/core/v1.Protocol objects to strings understood by nftables
 func (g *NftablesGenerator) mapProtocol(k8sproto corev1.Protocol) (string, error) {
 	switch k8sproto {
 	case corev1.ProtocolTCP:
@@ -96,6 +97,7 @@ func (g *NftablesGenerator) mapProtocol(k8sproto corev1.Protocol) (string, error
 	}
 }
 
+// Generates a config suitable for nftablesTemplate from a LoadBalancer model
 func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nftablesConfig, error) {
 	result := &nftablesConfig{
 		FilterTableName:         g.Cfg.FilterTableName,
