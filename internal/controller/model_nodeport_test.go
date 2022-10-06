@@ -111,6 +111,7 @@ func (f *nodePortGeneratorFixture) runWith(body func(g *NodePortLoadBalancerMode
 	f.l3portmanager.AssertExpectations(f.t)
 }
 
+// Looks for the ingress matching `address` in `items` and applies the test function `testfunc` to it
 func anyIngressIP(t *testing.T, items []model.IngressIP, address string, testfunc func(t *testing.T, i model.IngressIP)) {
 	assert.Conditionf(t, func() bool {
 		for _, item := range items {
@@ -124,6 +125,7 @@ func anyIngressIP(t *testing.T, items []model.IngressIP, address string, testfun
 	}, "no Ingress found for address %s in %#v", address, items)
 }
 
+// Looks for the port forward matching `port` and `protocol` in `items` and applies the test function `testfunc` to it
 func anyPort(t *testing.T, items []model.PortForward, inboundPort int32, protocol corev1.Protocol, testfunc func(t *testing.T, p model.PortForward)) {
 	assert.Conditionf(t, func() bool {
 		for _, item := range items {
