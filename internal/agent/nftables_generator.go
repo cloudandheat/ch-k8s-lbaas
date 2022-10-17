@@ -15,9 +15,12 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
+	"strings"
 	"text/template"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +36,37 @@ table {{ .FilterTableType }} {{ .FilterTableName }} {
 	chain {{ .FilterForwardChainName }} {
 		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} accept;
 	}
+
+	# Using uppercase RULE and CIDR to prevent collisions with policy names like 'x-rule-y-cidr-z'
+	{{- range $policy := $cfg.NetworkPolicies }}
+	chain {{ $policy.Name }} {
+		{{- range $ruleIndex, $ingressRule := $policy.IngressRuleChains }}
+		jump {{ $policy.Name }}-RULE{{ $ruleIndex }};
+		{{- end }}
+	}
+
+	{{- range $ruleIndex, $ingressRule := $policy.IngressRuleChains }}
+	chain {{ $policy.Name }}-RULE{{ $ruleIndex }} {
+		{{- range $entryIndex, $entry := $ingressRule.Entries }}
+		{{ $entry.SaddrMatch.Match }} {{ $entry.PortMatch }} {{- if ne ($entry.SaddrMatch.Except | len) 0 }} jump {{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {{- else }} accept {{- end }};
+
+		{{- end }}
+	}
+
+	{{- range $entryIndex, $entry := $ingressRule.Entries }}
+		{{- if ne ($entry.SaddrMatch.Except | len) 0 }}
+	chain {{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {
+		{{- range $addr := $entry.SaddrMatch.Except }}
+		ip saddr {{ $addr }} return;
+		{{- end}}
+		accept;
+	}
+		{{- end }}
+	{{- end }}
+
+	{{- end }}
+
+	{{- end }}
 }
 
 table ip {{ .NATTableName }} {
@@ -55,6 +89,35 @@ table ip {{ .NATTableName }} {
 	ErrProtocolNotSupported = fmt.Errorf("Protocol is not supported")
 )
 
+type SAddrMatch struct {
+	// String like eg. "ip saddr 0.0.0.0/0" ready to be used in an nftables rule.
+	// May be "" so the rule doesn't match on source addresses (allow all)
+	Match string
+
+	// List of cidrs to block. If empty, set verdict to 'accept'.
+	// If nonempty, set verdict to 'jump $c' and generate a new
+	// chain $c that drops all address ranges and defaults to 'accept'
+	Except []string
+}
+
+// Represents a single rule within an ingressRule chain.
+type ingressRuleChainEntry struct {
+	SaddrMatch SAddrMatch
+
+	// String like eg. "tcp dport {80,443,8080-8090}" ready to be used in an nftables rule.
+	// May be "" so the rule doesn't match on destination ports (allow all)
+	PortMatch string
+}
+
+type ingressRuleChain struct {
+	Entries []ingressRuleChainEntry
+}
+
+type networkPolicy struct {
+	Name              string
+	IngressRuleChains []ingressRuleChain
+}
+
 type nftablesForward struct {
 	Protocol             string
 	InboundIP            string
@@ -73,10 +136,94 @@ type nftablesConfig struct {
 	FWMarkBits              uint32
 	FWMarkMask              uint32
 	Forwards                []nftablesForward
+	NetworkPolicies         map[string]networkPolicy
 }
 
 type NftablesGenerator struct {
 	Cfg config.Nftables
+}
+
+// Takes a slice of strings and produces a list ready to be used in an nftables rule
+// eg. []string{"1", "2", "3"} => "{1,2,3}"
+func makeNftablesList(items []string) (string, error) {
+	if len(items) == 0 {
+		return "", errors.New("Length of items must not be zero")
+	}
+	return "{" + strings.Join(items, ",") + "}", nil
+}
+
+//TODO: func to validate if a string is an ip address or cidr
+
+// Generates a list of strings like "tcp dport match {80,443,8080-8090}"" ready to
+// be used in nftables rules.
+// returns []string{""} if 'in' is empty, so the rule doesn't match on
+// destination ports (allow all)
+func makePortMatches(in []model.PortFilter) (portMatches []string, err error) {
+	portMap, err := makePortMap(in)
+	if err != nil {
+		return nil, err
+	}
+	portMatches = make([]string, 0, len(portMap)+1)
+	for proto, ports := range portMap {
+		newMatch := proto
+		if len(ports) != 0 {
+			nftablesList, err := makeNftablesList(ports)
+			if err != nil {
+				return nil, err
+			}
+			newMatch += " dport " + nftablesList
+		}
+		portMatches = append(portMatches, newMatch)
+	}
+	// if there are no port matches, all ports are allowed
+	if len(portMatches) == 0 {
+		portMatches = append(portMatches, "")
+	}
+	return portMatches, nil
+}
+
+// Generates a list of SAddrMatches to build nftable rules from
+// returns a singleton with an empty SAddrMatch if 'in' is empty,
+// so the rule doesn't match on ip addresses (allow all)
+func makeSAddrMatches(in []model.IPBlockFilter) (SAddrMatches []SAddrMatch) {
+	// if there are no IPBlockFilters, all address ranges are allowed
+	if len(in) == 0 {
+		return []SAddrMatch{
+			{
+				Match:  "",
+				Except: []string{},
+			},
+		}
+	}
+	SAddrMatches = make([]SAddrMatch, 0, len(in))
+	for _, block := range in {
+		SAddrMatches = append(
+			SAddrMatches, SAddrMatch{
+				Match:  "ip saddr " + block.Allow,
+				Except: copyAddresses(block.Block),
+			},
+		)
+	}
+	return SAddrMatches
+}
+
+func makeIngressRuleChain(rule model.AllowedIngress) (chain ingressRuleChain, err error) {
+	portMatches, err := makePortMatches(rule.PortFilters)
+	if err != nil {
+		return chain, err
+	}
+	sAddrMatches := makeSAddrMatches(rule.IPBlockFilters)
+	chain.Entries = make([]ingressRuleChainEntry, 0, len(sAddrMatches)*len(portMatches))
+	for _, sAddrMatch := range sAddrMatches {
+		for _, portMatch := range portMatches {
+			newEntry := ingressRuleChainEntry{
+				SaddrMatch: sAddrMatch,
+				PortMatch:  portMatch,
+			}
+			chain.Entries = append(chain.Entries, newEntry)
+		}
+	}
+	return chain, nil
 }
 
 func copyAddresses(in []string) []string {
@@ -85,7 +232,73 @@ func copyAddresses(in []string) []string {
 	return result
 }
 
-func (g *NftablesGenerator) mapProtocol(k8sproto corev1.Protocol) (string, error) {
+// Takes a PortFilter and returns the protocol and a string representing the port or port range ready to be consumed by nftables.
+// port==nil means all ports of the protocol are allowed
+// eg. ("tcp", "80", nil), ("udp", nil, nil), ("tcp", "8080-8090", nil)
+func makePortString(in model.PortFilter) (proto string, port *string, err error) {
+	proto, err = mapProtocol(in.Protocol)
+	if err != nil {
+		return proto, port, err
+	}
+	if in.Port == nil {
+		return
+	} else {
+		p := strconv.Itoa(int(*in.Port))
+		port = &p
+		if in.EndPort != nil {
+			*port += "-" + strconv.Itoa(int(*in.EndPort)) // TODO: Use Join here?
+		}
+	}
+	return proto, port, nil
+}
+
+// Takes a list of PortFilters and returns a map from protocol to port ranges.
+// an empty list as value means that all ports of the protocol are allowed
+// eg. map[string]{"tcp": []policyPort{"80", "8080-8090"}, "udp": []string{}]}
+// an empty map means that all ports of all protocols are allowed
+func makePortMap(in []model.PortFilter) (portMap map[string][]string, err error) {
+	portMap = make(map[string][]string)
+	allowAll := make(map[string]bool)
+	for _, port := range in {
+		proto, portString, err := makePortString(port)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := portMap[proto]; !ok {
+			portMap[proto] = make([]string, 0, 5)
+		}
+		if portString == nil {
+			allowAll[proto] = true
+		} else {
+			portMap[proto] = append(portMap[proto], *portString)
+		}
+	}
+	for proto, all := range allowAll {
+		if all == true {
+			portMap[proto] = []string{}
+		}
+	}
+	return portMap, nil
+}
+
+func copyNetworkPolicies(in []model.NetworkPolicy) ([]networkPolicy, error) {
+	result := make([]networkPolicy, len(in))
+	var err error
+	for i, policy := range in {
+		result[i].Name = policy.Name
+		result[i].IngressRuleChains = make([]ingressRuleChain, len(policy.AllowedIngresses))
+		for j, rule := range policy.AllowedIngresses {
+			result[i].IngressRuleChains[j], err = makeIngressRuleChain(rule)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+// Maps from k8s.io/api/core/v1.Protocol objects to strings understood by nftables
+func mapProtocol(k8sproto corev1.Protocol) (string, error) {
 	switch k8sproto {
 	case corev1.ProtocolTCP:
 		return "tcp", nil
@@ -96,6 +309,7 @@ func (g *NftablesGenerator) mapProtocol(k8sproto corev1.Protocol) (string, error
 	}
 }
 
+// Generates a config suitable for nftablesTemplate from a LoadBalancer model
 func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nftablesConfig, error) {
 	result := &nftablesConfig{
 		FilterTableName:         g.Cfg.FilterTableName,
@@ -107,11 +321,12 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		FWMarkBits:              g.Cfg.FWMarkBits,
 		FWMarkMask:              g.Cfg.FWMarkMask,
 		Forwards:                []nftablesForward{},
+		NetworkPolicies:         map[string]networkPolicy{},
 	}
 
 	for _, ingress := range m.Ingress {
 		for _, port := range ingress.Ports {
-			mappedProtocol, err := g.mapProtocol(port.Protocol)
+			mappedProtocol, err := mapProtocol(port.Protocol)
 			if err != nil {
 				return nil, err
 			}
@@ -142,6 +357,14 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 
 		return fwdA.InboundPort < fwdB.InboundPort
 	})
+
+	policies, err := copyNetworkPolicies(m.NetworkPolicies)
+	if err != nil {
+		return nil, err
+	}
+	for _, policy := range policies {
+		result.NetworkPolicies[policy.Name] = policy
+	}
 
 	return result, nil
 }

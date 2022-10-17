@@ -21,9 +21,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"os"
+
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"os"
 )
 
 func newNftablesGenerator() *NftablesGenerator {
@@ -96,6 +97,54 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 				},
 			},
 		},
+		NetworkPolicies: []model.NetworkPolicy{
+			{
+				Name: "allow-http",
+				AllowedIngresses: []model.AllowedIngress{
+					{
+						PortFilters: []model.PortFilter{
+							{
+								Protocol: corev1.ProtocolTCP,
+								Port:     func(i int32) *int32 { return &i }(80),
+							},
+							{
+								Protocol: corev1.ProtocolTCP,
+								Port:     func(i int32) *int32 { return &i }(8080),
+								EndPort:  func(i int32) *int32 { return &i }(8090),
+							},
+						},
+					},
+				},
+			},
+			{
+				Name: "block-range",
+				AllowedIngresses: []model.AllowedIngress{
+					{
+						IPBlockFilters: []model.IPBlockFilter{
+							{
+								Allow: "0.0.0.0/0",
+								Block: []string{
+									"192.168.2.0/24",
+									"192.168.178.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				Name: "allow-udp",
+				AllowedIngresses: []model.AllowedIngress{
+					{
+						PortFilters: []model.PortFilter{
+							{
+								Protocol: corev1.ProtocolUDP,
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	scfg, err := g.GenerateStructuredConfig(m)
@@ -130,6 +179,32 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 	assert.Equal(t, m.Ingress[1].Ports[0].InboundPort, fwd.InboundPort)
 	assert.Equal(t, m.Ingress[1].Ports[0].DestinationPort, fwd.DestinationPort)
 	assert.Equal(t, m.Ingress[1].Ports[0].DestinationAddresses, fwd.DestinationAddresses)
+
+	pol := scfg.NetworkPolicies["allow-http"]
+	assert.Equal(t, "allow-http", pol.Name)
+	assert.Equal(t, 1, len(pol.IngressRuleChains))
+	assert.Equal(t, 1, len(pol.IngressRuleChains[0].Entries))
+	assert.Equal(t, "", pol.IngressRuleChains[0].Entries[0].SaddrMatch.Match)
+	assert.Equal(t, 0, len(pol.IngressRuleChains[0].Entries[0].SaddrMatch.Except))
+	assert.Equal(t, "tcp dport {80,8080-8090}", pol.IngressRuleChains[0].Entries[0].PortMatch)
+
+	pol = scfg.NetworkPolicies["allow-udp"]
+	assert.Equal(t, "allow-udp", pol.Name)
+	assert.Equal(t, 1, len(pol.IngressRuleChains))
+	assert.Equal(t, 1, len(pol.IngressRuleChains[0].Entries))
+	assert.Equal(t, "", pol.IngressRuleChains[0].Entries[0].SaddrMatch.Match)
+	assert.Equal(t, 0, len(pol.IngressRuleChains[0].Entries[0].SaddrMatch.Except))
+	assert.Equal(t, "udp", pol.IngressRuleChains[0].Entries[0].PortMatch)
+
+	pol = scfg.NetworkPolicies["block-range"]
+	assert.Equal(t, "block-range", pol.Name)
+	assert.Equal(t, 1, len(pol.IngressRuleChains))
+	assert.Equal(t, 1, len(pol.IngressRuleChains[0].Entries))
+	assert.Equal(t, "ip saddr 0.0.0.0/0", pol.IngressRuleChains[0].Entries[0].SaddrMatch.Match)
+	assert.Equal(t, 2, len(pol.IngressRuleChains[0].Entries[0].SaddrMatch.Except))
+	assert.Equal(t, "192.168.2.0/24", pol.IngressRuleChains[0].Entries[0].SaddrMatch.Except[0])
+	assert.Equal(t, "192.168.178.0/24", pol.IngressRuleChains[0].Entries[0].SaddrMatch.Except[1])
+	assert.Equal(t, "", pol.IngressRuleChains[0].Entries[0].PortMatch)
 }
 
 func TestNftablesStructuredConfigSortsAddresses(t *testing.T) {
