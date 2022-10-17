@@ -145,6 +145,20 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 				},
 			},
 		},
+		PolicyAssignments: []model.PolicyAssignment{
+			{
+				Address: "192.168.0.1",
+				NetworkPolicies: []string{
+					"allow-http",
+				},
+			},
+			{
+				Address: "192.168.0.2",
+				NetworkPolicies: []string{
+					"block-range",
+				},
+			},
+		},
 	}
 
 	scfg, err := g.GenerateStructuredConfig(m)

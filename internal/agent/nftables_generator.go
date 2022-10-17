@@ -34,8 +34,21 @@ var (
 {{ $cfg := . }}
 table {{ .FilterTableType }} {{ .FilterTableName }} {
 	chain {{ .FilterForwardChainName }} {
+		{{- range $dest := $cfg.PolicyAssignments }}
+		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ip daddr {{ $dest.Address }} goto POD-{{ $dest.Address }};
+		{{- end }}
 		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} accept;
 	}
+
+	# Using uppercase POD to prevent collisions with policy names like 'pod-x.x.x.x'
+	{{- range $pod := $cfg.PolicyAssignments }}
+	chain POD-{{ $pod.Address }} {
+		{{- range $pol := $pod.NetworkPolicies }}
+		jump {{ $pol }};
+		{{- end }}
+		drop;
+	}
+	{{- end }}
 
 	# Using uppercase RULE and CIDR to prevent collisions with policy names like 'x-rule-y-cidr-z'
 	{{- range $policy := $cfg.NetworkPolicies }}
@@ -118,6 +131,11 @@ type networkPolicy struct {
 	IngressRuleChains []ingressRuleChain
 }
 
+type policyAssignment struct {
+	Address         string
+	NetworkPolicies []string
+}
+
 type nftablesForward struct {
 	Protocol             string
 	InboundIP            string
@@ -137,6 +155,7 @@ type nftablesConfig struct {
 	FWMarkMask              uint32
 	Forwards                []nftablesForward
 	NetworkPolicies         map[string]networkPolicy
+	PolicyAssignments       []policyAssignment
 }
 
 type NftablesGenerator struct {
@@ -297,6 +316,15 @@ func copyNetworkPolicies(in []model.NetworkPolicy) ([]networkPolicy, error) {
 	return result, nil
 }
 
+func copyPolicyAssignment(in []model.PolicyAssignment) []policyAssignment {
+	result := make([]policyAssignment, len(in))
+	for i, assignment := range in {
+		result[i].Address = assignment.Address
+		result[i].NetworkPolicies = copyAddresses(assignment.NetworkPolicies)
+	}
+	return result
+}
+
 // Maps from k8s.io/api/core/v1.Protocol objects to strings understood by nftables
 func mapProtocol(k8sproto corev1.Protocol) (string, error) {
 	switch k8sproto {
@@ -322,6 +350,7 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		FWMarkMask:              g.Cfg.FWMarkMask,
 		Forwards:                []nftablesForward{},
 		NetworkPolicies:         map[string]networkPolicy{},
+		PolicyAssignments:       []policyAssignment{},
 	}
 
 	for _, ingress := range m.Ingress {
@@ -358,6 +387,7 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		return fwdA.InboundPort < fwdB.InboundPort
 	})
 
+	result.PolicyAssignments = copyPolicyAssignment(m.PolicyAssignments)
 	policies, err := copyNetworkPolicies(m.NetworkPolicies)
 	if err != nil {
 		return nil, err
