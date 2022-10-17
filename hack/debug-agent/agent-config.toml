@@ -1,0 +1,19 @@
+shared-secret = "cHaNgE0mE1=="
+bind-address = "localhost"
+bind-port = 20211
+
+[keepalived]
+virtual-router-id-base = 4
+interface = "enp1"
+
+[keepalived.service]
+config-file = "generated/keepalived.conf"
+reload-command = ["echo", "reloading keepalived"]
+start-command = ["echo", "starting keepalived"]
+status-command = ["echo", "checking keepalived"]
+
+[nftables.service]
+config-file = "generated/nftables.conf"
+reload-command = ["echo", "reloading nftables"]
+start-command = ["echo", "starting nftables"]
+status-command = ["echo", "checking nftables"]
