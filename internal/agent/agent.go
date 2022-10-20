@@ -32,6 +32,8 @@ import (
 
 	"github.com/golang-jwt/jwt"
 
+	"github.com/go-playground/validator/v10"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -47,6 +49,8 @@ var (
 		},
 		[]string{"status"},
 	)
+
+	validate = validator.New()
 )
 
 type ApplyHandlerv1 struct {
@@ -275,6 +279,15 @@ func (h *ApplyHandlerv1) preflightCheck(w http.ResponseWriter, r *http.Request) 
 
 func (h *ApplyHandlerv1) ProcessRequest(lbcfg *model.LoadBalancer) (int, string) {
 	klog.V(1).Infof("received config: %#v", lbcfg)
+
+	err := validate.Struct(lbcfg)
+	if err != nil {
+		for _, e := range err.(validator.ValidationErrors) {
+			klog.Errorf("%s\n", e.Error())
+			klog.V(1).Infof("%#v\n", e)
+		}
+		return 400, err.Error() // Bad Request
+	}
 
 	changed, err := h.KeepalivedConfig.WriteWithRollback(lbcfg)
 	if err != nil {
