@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	corelisters "k8s.io/client-go/listers/core/v1"
+	networkinglisters "k8s.io/client-go/listers/networking/v1"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
@@ -33,7 +34,9 @@ func NewLoadBalancerModelGenerator(
 	l3portmanager openstack.L3PortManager,
 	services corelisters.ServiceLister,
 	nodes corelisters.NodeLister,
-	endpoints corelisters.EndpointsLister) (LoadBalancerModelGenerator, error) {
+	endpoints corelisters.EndpointsLister,
+	networkpolicies networkinglisters.NetworkPolicyLister,
+	pods corelisters.PodLister) (LoadBalancerModelGenerator, error) {
 	switch backendLayer {
 	case config.BackendLayerNodePort:
 		return NewNodePortLoadBalancerModelGenerator(
@@ -45,7 +48,7 @@ func NewLoadBalancerModelGenerator(
 		), nil
 	case config.BackendLayerPod:
 		return NewPodLoadBalancerModelGenerator(
-			l3portmanager, services, endpoints,
+			l3portmanager, services, endpoints, networkpolicies, pods,
 		), nil
 	default:
 		return nil, fmt.Errorf("invalid backend type: %q", backendLayer)

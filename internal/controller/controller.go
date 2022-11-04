@@ -27,6 +27,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
+	networkinginformers "k8s.io/client-go/informers/networking/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -82,6 +83,7 @@ func NewController(
 	serviceInformer coreinformers.ServiceInformer,
 	nodeInformer coreinformers.NodeInformer,
 	endpointsInformer coreinformers.EndpointsInformer,
+	networkPoliciesInformer networkinginformers.NetworkPolicyInformer,
 	l3portmanager openstack.L3PortManager,
 	agentController AgentController,
 	generator LoadBalancerModelGenerator,
@@ -167,6 +169,17 @@ func NewController(
 		})
 	}
 
+	if networkPoliciesInformer != nil {
+		networkPoliciesInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: controller.handleAuxUpdated,
+			UpdateFunc: func(old, new interface{}) {
+				klog.Info("UpdateFunc called")
+				controller.handleAuxUpdated(new)
+			},
+			DeleteFunc: controller.handleAuxUpdated,
+		})
+	}
+
 	return controller, nil
 }
 
@@ -245,7 +258,7 @@ func (c *Controller) periodicCleanup() {
 func (c *Controller) handleObject(obj interface{}) {
 	var object metav1.Object
 	var ok bool
-	klog.Info("handleObject called")
+	klog.Infof("handleObject called with %T", obj)
 	if object, ok = obj.(metav1.Object); !ok {
 		klog.V(5).Infof("ignoring non-castable object in handleObject; expecting deletion event")
 		return

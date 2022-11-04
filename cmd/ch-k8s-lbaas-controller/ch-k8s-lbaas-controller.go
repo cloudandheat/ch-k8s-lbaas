@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+
 	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
@@ -90,6 +91,8 @@ func main() {
 	servicesInformer := kubeInformerFactory.Core().V1().Services()
 	nodesInformer := kubeInformerFactory.Core().V1().Nodes()
 	endpointsInformer := kubeInformerFactory.Core().V1().Endpoints()
+	networkPoliciesInformer := kubeInformerFactory.Networking().V1().NetworkPolicies()
+	podsInformer := kubeInformerFactory.Core().V1().Pods() // TODO: I don't want to be informed about pods. Just need to list them
 
 	modelGenerator, err := controller.NewLoadBalancerModelGenerator(
 		fileCfg.BackendLayer,
@@ -97,6 +100,8 @@ func main() {
 		servicesInformer.Lister(),
 		nodesInformer.Lister(),
 		endpointsInformer.Lister(),
+		networkPoliciesInformer.Lister(),
+		podsInformer.Lister(),
 	)
 
 	if fileCfg.BackendLayer != config.BackendLayerNodePort {
@@ -116,6 +121,7 @@ func main() {
 		servicesInformer,
 		nodesInformer,
 		endpointsInformer,
+		networkPoliciesInformer,
 		l3portmanager,
 		agentController,
 		modelGenerator,

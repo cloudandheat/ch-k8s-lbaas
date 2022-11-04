@@ -20,12 +20,49 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
+type IPBlockFilter struct {
+	Allow string   `json:"allow"`
+	Block []string `json:"block"`
+}
+
+type PortFilter struct {
+	Protocol corev1.Protocol `json:"protocol"`
+
+	// Don't filter by port number if empty (only by protocol)
+	Port    *int32 `json:"port,omitempty"`
+	EndPort *int32 `json:"end-port,omitempty"`
+}
+
+// AllowedIngress allows all incoming traffic by default.
+// IPBlockFilters and PortFilters can by used to refine which traffic should be allowed
+type AllowedIngress struct {
+	// Don't filter by address if empty (allow all)
+	IPBlockFilters []IPBlockFilter `json:"ipblock-filter"`
+
+	// Don't filter by transport protocol or port if empty (allow all)
+	PortFilters []PortFilter `json:"port-filter"`
+}
+
+// NetworkPolicy blocks all incoming traffic by default.
+// Entries in AllowedIngress are used do allow certain (or all) traffic
+type NetworkPolicy struct {
+	Name string `json:"name"`
+
+	// Block all incoming traffic if empty
+	AllowedIngresses []AllowedIngress `json:"allowed-ingresses"`
+}
+
+type PolicyAssignment struct {
+	Address         string   `json:"address"`
+	NetworkPolicies []string `json:"network-policies"`
+}
+
 type PortForward struct {
 	Protocol             corev1.Protocol `json:"protocol"`
 	InboundPort          int32           `json:"inbound-port"`
 	DestinationAddresses []string        `json:"destination-addresses"`
 	DestinationPort      int32           `json:"destination-port"`
-	Policy               string          `json:"policy"`
+	BalancePolicy        string          `json:"policy"`
 }
 
 type IngressIP struct {
@@ -34,7 +71,9 @@ type IngressIP struct {
 }
 
 type LoadBalancer struct {
-	Ingress []IngressIP `json:"ingress"`
+	Ingress           []IngressIP        `json:"ingress"`
+	NetworkPolicies   []NetworkPolicy    `json:"network-policies"`
+	PolicyAssignments []PolicyAssignment `json:"policy-assignments"`
 }
 
 type ConfigClaim struct {

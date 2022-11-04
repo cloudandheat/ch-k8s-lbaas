@@ -1,0 +1,70 @@
+load-balancer-config:
+  ingress:
+    - address: 185.187.1.1
+      port-filters:
+        - protocol: TCP
+          inbound-port: 80
+          destination-addresses:
+            - 10.9.8.7
+            - 10.9.8.6
+          destination-port: 8080
+        - protocol: TCP
+          inbound-port: 22
+          destination-addresses:
+            - 10.9.8.7
+            - 10.9.8.6
+          destination-port: 2222
+        - protocol: TCP
+          inbound-port: 6443
+          destination-addresses:
+            - 10.0.8.7
+            - 10.0.8.6
+          destination-port: 6443
+  policy-assignments:
+    - address: 10.9.8.7
+      network-policies:
+      - pol1
+    - address: 10.10.2.1
+      network-policies:
+      - pol1
+      - pol2
+      - allow-udp
+    - address: 10.0.8.6
+      network-policies:
+      - allow-everything
+      - pol2
+  network-policies:
+    - name: pol1
+      allowed-ingresses:
+      - port-filters:
+          - protocol: TCP
+            port: 80
+          - protocol: TCP
+            port: 8080
+            end-port: 8090
+          - protocol: UDP
+        ipblock-filters:
+          - allow: 185.187.0.0/16
+            block:
+            - 185.187.13.0/24
+          - allow: 185.187.19.0/24
+    - name: pol2
+      allowed-ingresses:
+      - ipblock-filters:
+          - allow: 185.187.19.0/24
+            block:
+            - 185.187.19.0/25
+          - allow: 185.187.19.0/23
+            block:
+            - 185.187.19.100/32
+            - 185.187.19.102/32
+            - 185.187.19.109/32
+            - 185.187.19.110/32
+    - name: allow-everything
+      allowed-ingresses: [{}]
+    - name: block-everything
+      allowed-ingresses: []
+    - name: allow-udp
+      allowed-ingresses:
+      - port-filters:
+        - protocol: UDP

@@ -18,7 +18,11 @@ import (
 	goerrors "errors"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	networkinglisters "k8s.io/client-go/listers/networking/v1"
 
 	"k8s.io/klog"
 
@@ -31,19 +35,25 @@ var (
 )
 
 type PodLoadBalancerModelGenerator struct {
-	l3portmanager openstack.L3PortManager
-	services      corelisters.ServiceLister
-	endpoints     corelisters.EndpointsLister
+	l3portmanager   openstack.L3PortManager
+	services        corelisters.ServiceLister
+	networkpolicies networkinglisters.NetworkPolicyLister
+	endpoints       corelisters.EndpointsLister
+	pods            corelisters.PodLister
 }
 
 func NewPodLoadBalancerModelGenerator(
 	l3portmanager openstack.L3PortManager,
 	services corelisters.ServiceLister,
-	endpoints corelisters.EndpointsLister) *PodLoadBalancerModelGenerator {
+	endpoints corelisters.EndpointsLister,
+	networkpolicies networkinglisters.NetworkPolicyLister,
+	pods corelisters.PodLister) *PodLoadBalancerModelGenerator {
 	return &PodLoadBalancerModelGenerator{
-		l3portmanager: l3portmanager,
-		services:      services,
-		endpoints:     endpoints,
+		l3portmanager:   l3portmanager,
+		services:        services,
+		endpoints:       endpoints,
+		networkpolicies: networkpolicies,
+		pods:            pods,
 	}
 }
 
@@ -71,8 +81,119 @@ func (g *PodLoadBalancerModelGenerator) findPort(subset *corev1.EndpointSubset, 
 	return -1, errPortNotFoundInSubset
 }
 
+// Return an AllowedIngress which by default allows all traffic.
+// IPBlockFilters and PortFilters refine what traffic should be allowed
+func buildAllowedIngress(ingress *networkingv1.NetworkPolicyIngressRule) (rule model.AllowedIngress) {
+	rule.PortFilters = make([]model.PortFilter, 0, len(ingress.Ports))
+	for _, port := range ingress.Ports {
+		newPort := model.PortFilter{
+			Protocol: *port.Protocol,
+			EndPort:  port.EndPort,
+		}
+		if port.Port != nil {
+			newPort.Port = &port.Port.IntVal
+		}
+		klog.V(1).Infof("Adding proto %s port %d to %d",
+			newPort.Protocol, newPort.Port, newPort.EndPort)
+		rule.PortFilters = append(rule.PortFilters, newPort)
+	}
+
+	rule.IPBlockFilters = make([]model.IPBlockFilter, 0, len(ingress.From))
+	for _, from := range ingress.From {
+		if from.IPBlock == nil {
+			continue
+		}
+		newBlock := model.IPBlockFilter{
+			Allow: from.IPBlock.CIDR,
+		}
+		for _, except := range from.IPBlock.Except {
+			newBlock.Block = append(newBlock.Block, except)
+		}
+		klog.V(1).Infof("Adding block %s with %d excepts",
+			newBlock.Allow, len(newBlock.Block))
+		rule.IPBlockFilters = append(rule.IPBlockFilters, newBlock)
+	}
+	return rule
+}
+
+func hasFromWithIPBlock(ingress *networkingv1.NetworkPolicyIngressRule) bool {
+	if len(ingress.From) == 0 {
+		return false
+	}
+	for _, from := range ingress.From {
+		if from.IPBlock != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func buildNetworkPolicy(in *networkingv1.NetworkPolicy) (policy model.NetworkPolicy) {
+	policy = model.NetworkPolicy{
+		Name:             in.Name,
+		AllowedIngresses: make([]model.AllowedIngress, 0, len(in.Spec.Ingress)),
+	}
+	for _, ingress := range in.Spec.Ingress {
+		klog.V(1).Infof("Processing policy ingress %#v", ingress)
+		if len(ingress.From) != 0 && !hasFromWithIPBlock(&ingress) {
+			klog.V(1).Info("Skipping because has From but no IPBlock")
+			// This ingress rule has a namespaceSelector and/or a podSelector
+			// but no IPBlock, so it only allows cluster-internal traffic.
+			// Thus, we don't generate an AllowedIngress, which would allow
+			// external traffic.
+			continue
+		}
+		policy.AllowedIngresses = append(policy.AllowedIngresses, buildAllowedIngress(&ingress))
+	}
+	return policy
+}
+
+func hasPolicyType(policy *networkingv1.NetworkPolicy, policyType networkingv1.PolicyType) bool {
+	for _, element := range policy.Spec.PolicyTypes {
+		if element == policyType {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *PodLoadBalancerModelGenerator) GenerateModel(portAssignment map[string]string) (*model.LoadBalancer, error) {
 	result := &model.LoadBalancer{}
+
+	allPolicies, err := g.networkpolicies.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	networkPolicies := make([]model.NetworkPolicy, 0, len(allPolicies))
+	policyMap := map[string][]string{} // dest addr => ingress ipBlock
+	for _, pol := range allPolicies {
+		klog.Infof("Processing policy %s", pol.Name)
+		if !hasPolicyType(pol, "Ingress") {
+			klog.Infof("Skipping because policy does not apply to ingress")
+			continue
+		}
+
+		networkPolicies = append(networkPolicies, buildNetworkPolicy(pol))
+
+		// build policyMap
+		selector, err := metav1.LabelSelectorAsSelector(&pol.Spec.PodSelector)
+		if err != nil {
+			return nil, err
+		}
+
+		pods, err := g.pods.Pods(pol.Namespace).List(selector)
+		if err != nil {
+			return nil, err
+		}
+		for _, pod := range pods {
+			for _, addr := range pod.Status.PodIPs {
+				klog.V(1).Infof("Adding policy %s to address %s", pol.Name, addr.IP)
+				policyMap[addr.IP] = append(policyMap[addr.IP], pol.Name)
+			}
+		}
+	}
+	klog.Infof("Done getting %d policies applying to %d addresses", len(allPolicies), len(policyMap))
 
 	ingressMap := map[string]model.IngressIP{}
 
@@ -156,6 +277,14 @@ func (g *PodLoadBalancerModelGenerator) GenerateModel(portAssignment map[string]
 	i := 0
 	for _, ingress := range ingressMap {
 		result.Ingress[i] = ingress
+		i++
+	}
+	result.NetworkPolicies = networkPolicies
+	result.PolicyAssignments = make([]model.PolicyAssignment, len(policyMap))
+	i = 0
+	for addr, policies := range policyMap {
+		result.PolicyAssignments[i].Address = addr
+		result.PolicyAssignments[i].NetworkPolicies = policies
 		i++
 	}
 
