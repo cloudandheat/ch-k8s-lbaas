@@ -184,14 +184,11 @@ func makePortMatches(in []model.PortFilter) (portMatches []string, err error) {
 	}
 	portMatches = make([]string, 0, len(portMap)+1)
 	for proto, ports := range portMap {
-		newMatch := proto
-		if len(ports) != 0 {
-			nftablesList, err := makeNftablesList(ports)
-			if err != nil {
-				return nil, err
-			}
-			newMatch += " dport " + nftablesList
+		nftablesList, err := makeNftablesList(ports)
+		if err != nil {
+			return nil, err
 		}
+		newMatch := proto + " dport " + nftablesList
 		portMatches = append(portMatches, newMatch)
 	}
 	// if there are no port matches, all ports are allowed
@@ -273,7 +270,7 @@ func makePortString(in model.PortFilter) (proto string, port *string, err error)
 
 // Takes a list of PortFilters and returns a map from protocol to port ranges.
 // an empty list as value means that all ports of the protocol are allowed
-// eg. map[string]{"tcp": []policyPort{"80", "8080-8090"}, "udp": []string{}]}
+// eg. map[string]{"tcp": []string{"80", "8080-8090"}, "udp": []string{"0-65535"}]}
 // an empty map means that all ports of all protocols are allowed
 func makePortMap(in []model.PortFilter) (portMap map[string][]string, err error) {
 	portMap = make(map[string][]string)
@@ -294,7 +291,7 @@ func makePortMap(in []model.PortFilter) (portMap map[string][]string, err error)
 	}
 	for proto, all := range allowAll {
 		if all == true {
-			portMap[proto] = []string{}
+			portMap[proto] = []string{"0-65535"} // proto without port means all ports of that protocol are allowed
 		}
 	}
 	return portMap, nil
