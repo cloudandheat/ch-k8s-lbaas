@@ -208,7 +208,7 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 	assert.Equal(t, 1, len(pol.IngressRuleChains[0].Entries))
 	assert.Equal(t, "", pol.IngressRuleChains[0].Entries[0].SaddrMatch.Match)
 	assert.Equal(t, 0, len(pol.IngressRuleChains[0].Entries[0].SaddrMatch.Except))
-	assert.Equal(t, "udp", pol.IngressRuleChains[0].Entries[0].PortMatch)
+	assert.Equal(t, "udp dport {0-65535}", pol.IngressRuleChains[0].Entries[0].PortMatch)
 
 	pol = scfg.NetworkPolicies["block-range"]
 	assert.Equal(t, "block-range", pol.Name)
