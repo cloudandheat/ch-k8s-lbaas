@@ -156,6 +156,7 @@ type nftablesConfig struct {
 	NATTableName            string
 	NATPostroutingChainName string
 	NATPreroutingChainName  string
+	PolicyPrefix            string
 	FWMarkBits              uint32
 	FWMarkMask              uint32
 	Forwards                []nftablesForward
@@ -351,6 +352,7 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		NATTableName:            g.Cfg.NATTableName,
 		NATPostroutingChainName: g.Cfg.NATPostroutingChainName,
 		NATPreroutingChainName:  g.Cfg.NATPreroutingChainName,
+		PolicyPrefix:            g.Cfg.PolicyPrefix,
 		FWMarkBits:              g.Cfg.FWMarkBits,
 		FWMarkMask:              g.Cfg.FWMarkMask,
 		Forwards:                []nftablesForward{},
