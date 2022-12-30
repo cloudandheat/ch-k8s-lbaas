@@ -35,16 +35,16 @@ var (
 table {{ .FilterTableType }} {{ .FilterTableName }} {
 	chain {{ .FilterForwardChainName }} {
 		{{- range $dest := $cfg.PolicyAssignments }}
-		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ip daddr {{ $dest.Address }} goto POD-{{ $dest.Address }};
+		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ip daddr {{ $dest.Address }} goto {{ .PolicyPrefix }}POD-{{ $dest.Address }};
 		{{- end }}
 		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} accept;
 	}
 
 	# Using uppercase POD to prevent collisions with policy names like 'pod-x.x.x.x'
 	{{- range $pod := $cfg.PolicyAssignments }}
-	chain POD-{{ $pod.Address }} {
+	chain {{ .PolicyPrefix }}POD-{{ $pod.Address }} {
 		{{- range $pol := $pod.NetworkPolicies }}
-		jump {{ $pol }};
+		jump {{ .PolicyPrefix }}{{ $pol }};
 		{{- end }}
 		drop;
 	}
@@ -52,23 +52,23 @@ table {{ .FilterTableType }} {{ .FilterTableName }} {
 
 	# Using uppercase RULE and CIDR to prevent collisions with policy names like 'x-rule-y-cidr-z'
 	{{- range $policy := $cfg.NetworkPolicies }}
-	chain {{ $policy.Name }} {
+	chain {{ .PolicyPrefix }}{{ $policy.Name }} {
 		{{- range $ruleIndex, $ingressRule := $policy.IngressRuleChains }}
-		jump {{ $policy.Name }}-RULE{{ $ruleIndex }};
+		jump {{ .PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }};
 		{{- end }}
 	}
 
 	{{- range $ruleIndex, $ingressRule := $policy.IngressRuleChains }}
-	chain {{ $policy.Name }}-RULE{{ $ruleIndex }} {
+	chain {{ .PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }} {
 		{{- range $entryIndex, $entry := $ingressRule.Entries }}
-		{{ $entry.SaddrMatch.Match }} {{ $entry.PortMatch }} {{- if ne ($entry.SaddrMatch.Except | len) 0 }} jump {{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {{- else }} accept {{- end }};
+		{{ $entry.SaddrMatch.Match }} {{ $entry.PortMatch }} {{- if ne ($entry.SaddrMatch.Except | len) 0 }} jump {{ .PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {{- else }} accept {{- end }};
 
 		{{- end }}
 	}
 
 	{{- range $entryIndex, $entry := $ingressRule.Entries }}
 		{{- if ne ($entry.SaddrMatch.Except | len) 0 }}
-	chain {{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {
+	chain {{ .PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {
 		{{- range $addr := $entry.SaddrMatch.Except }}
 		ip saddr {{ $addr }} return;
 		{{- end}}

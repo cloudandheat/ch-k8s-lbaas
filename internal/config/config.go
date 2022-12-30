@@ -62,6 +62,7 @@ type Nftables struct {
 	NATTableName            string `toml:"nat-table-name"`
 	NATPreroutingChainName  string `toml:"nat-prerouting-chain"`
 	NATPostroutingChainName string `toml:"nat-postrouting-chain"`
+	PolicyPrefix            string `toml:"policy-prefix"`
 	FWMarkBits              uint32 `toml:"fwmark-bits"`
 	FWMarkMask              uint32 `toml:"fwmark-mask"`
 
@@ -142,6 +143,7 @@ func FillKeepalivedConfig(cfg *Keepalived) {
 }
 
 func FillNftablesConfig(cfg *Nftables) {
+	defaultString(&cfg.PolicyPrefix, "")
 	defaultString(&cfg.FilterTableName, "filter")
 	defaultString(&cfg.FilterTableType, "inet")
 	defaultString(&cfg.FilterForwardChainName, "forward")
