@@ -56,15 +56,17 @@ type Keepalived struct {
 }
 
 type Nftables struct {
-	FilterTableName         string `toml:"filter-table-name"`
-	FilterTableType         string `toml:"filter-table-type"`
-	FilterForwardChainName  string `toml:"filter-forward-chain"`
-	NATTableName            string `toml:"nat-table-name"`
-	NATPreroutingChainName  string `toml:"nat-prerouting-chain"`
-	NATPostroutingChainName string `toml:"nat-postrouting-chain"`
-	PolicyPrefix            string `toml:"policy-prefix"`
-	FWMarkBits              uint32 `toml:"fwmark-bits"`
-	FWMarkMask              uint32 `toml:"fwmark-mask"`
+	FilterTableName         string   `toml:"filter-table-name"`
+	FilterTableType         string   `toml:"filter-table-type"`
+	FilterForwardChainName  string   `toml:"filter-forward-chain"`
+	NATTableName            string   `toml:"nat-table-name"`
+	NATPreroutingChainName  string   `toml:"nat-prerouting-chain"`
+	NATPostroutingChainName string   `toml:"nat-postrouting-chain"`
+	PolicyPrefix            string   `toml:"policy-prefix"`
+	NftCommand              []string `toml:"nft-command"`
+	LiveReload              bool     `toml:"live-reload"`
+	FWMarkBits              uint32   `toml:"fwmark-bits"`
+	FWMarkMask              uint32   `toml:"fwmark-mask"`
 
 	Service ServiceConfig `toml:"service"`
 }
@@ -143,13 +145,13 @@ func FillKeepalivedConfig(cfg *Keepalived) {
 }
 
 func FillNftablesConfig(cfg *Nftables) {
-	defaultString(&cfg.PolicyPrefix, "")
 	defaultString(&cfg.FilterTableName, "filter")
 	defaultString(&cfg.FilterTableType, "inet")
 	defaultString(&cfg.FilterForwardChainName, "forward")
 	defaultString(&cfg.NATTableName, "nat")
 	defaultString(&cfg.NATPreroutingChainName, "prerouting")
 	defaultString(&cfg.NATPostroutingChainName, "postrouting")
+	defaultStringList(&cfg.NftCommand, []string{"sudo", "nft"})
 
 	if cfg.FWMarkBits == 0 {
 		cfg.FWMarkBits = 1
