@@ -42,19 +42,25 @@ flush chain ip {{ .NATTableName }} {{ .NATPreroutingChainName }}
 flush chain ip {{ .NATTableName }} {{ .NATPostroutingChainName }}
 flush chain {{ .FilterTableType }} {{ .FilterTableName }} {{ .FilterForwardChainName }}
 
+# The "add chain" command is a workaround to make sure that the chain exists before deleting it.
+{{- range $chain := $cfg.ExistingPolicyChains }}
+add chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
+delete chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
+{{- end }}
+
 table {{ .FilterTableType }} {{ .FilterTableName }} {
 	chain {{ .FilterForwardChainName }} {
 		{{- range $dest := $cfg.PolicyAssignments }}
-		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ip daddr {{ $dest.Address }} goto {{ .PolicyPrefix }}POD-{{ $dest.Address }};
+		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ip daddr {{ $dest.Address }} goto {{ $cfg.PolicyPrefix }}POD-{{ $dest.Address }};
 		{{- end }}
 		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} accept;
 	}
 
 	# Using uppercase POD to prevent collisions with policy names like 'pod-x.x.x.x'
 	{{- range $pod := $cfg.PolicyAssignments }}
-	chain {{ .PolicyPrefix }}POD-{{ $pod.Address }} {
+	chain {{ $cfg.PolicyPrefix }}POD-{{ $pod.Address }} {
 		{{- range $pol := $pod.NetworkPolicies }}
-		jump {{ .PolicyPrefix }}{{ $pol }};
+		jump {{ $cfg.PolicyPrefix }}{{ $pol }};
 		{{- end }}
 		drop;
 	}
@@ -62,23 +68,23 @@ table {{ .FilterTableType }} {{ .FilterTableName }} {
 
 	# Using uppercase RULE and CIDR to prevent collisions with policy names like 'x-rule-y-cidr-z'
 	{{- range $policy := $cfg.NetworkPolicies }}
-	chain {{ .PolicyPrefix }}{{ $policy.Name }} {
+	chain {{ $cfg.PolicyPrefix }}{{ $policy.Name }} {
 		{{- range $ruleIndex, $ingressRule := $policy.IngressRuleChains }}
-		jump {{ .PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }};
+		jump {{ $cfg.PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }};
 		{{- end }}
 	}
 
 	{{- range $ruleIndex, $ingressRule := $policy.IngressRuleChains }}
-	chain {{ .PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }} {
+	chain {{ $cfg.PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }} {
 		{{- range $entryIndex, $entry := $ingressRule.Entries }}
-		{{ $entry.SaddrMatch.Match }} {{ $entry.PortMatch }} {{- if ne ($entry.SaddrMatch.Except | len) 0 }} jump {{ .PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {{- else }} accept {{- end }};
+		{{ $entry.SaddrMatch.Match }} {{ $entry.PortMatch }} {{- if ne ($entry.SaddrMatch.Except | len) 0 }} jump {{ $cfg.PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {{- else }} accept {{- end }};
 
 		{{- end }}
 	}
 
 	{{- range $entryIndex, $entry := $ingressRule.Entries }}
 		{{- if ne ($entry.SaddrMatch.Except | len) 0 }}
-	chain {{ .PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {
+	chain {{ $cfg.PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {
 		{{- range $addr := $entry.SaddrMatch.Except }}
 		ip saddr {{ $addr }} return;
 		{{- end}}
