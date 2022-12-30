@@ -32,6 +32,11 @@ import (
 var (
 	nftablesTemplate = template.Must(template.New("nftables.conf").Parse(`
 {{ $cfg := . }}
+
+flush chain ip {{ .NATTableName }} {{ .NATPreroutingChainName }}
+flush chain ip {{ .NATTableName }} {{ .NATPostroutingChainName }}
+flush chain {{ .FilterTableType }} {{ .FilterTableName }} {{ .FilterForwardChainName }}
+
 table {{ .FilterTableType }} {{ .FilterTableName }} {
 	chain {{ .FilterForwardChainName }} {
 		{{- range $dest := $cfg.PolicyAssignments }}
