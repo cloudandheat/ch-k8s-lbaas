@@ -15,13 +15,18 @@
 package agent
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"text/template"
+
+	"k8s.io/klog"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -162,10 +167,25 @@ type nftablesConfig struct {
 	Forwards                []nftablesForward
 	NetworkPolicies         map[string]networkPolicy
 	PolicyAssignments       []policyAssignment
+	ExistingPolicyChains    []string
 }
 
 type NftablesGenerator struct {
 	Cfg config.Nftables
+}
+
+type nftablesChainListResultChain struct {
+	Family string `json:"family"`
+	Table  string `json:"table"`
+	Name   string `json:"name"`
+}
+
+type nftablesChainListResultEntry struct {
+	Chain nftablesChainListResultChain `json:"chain,omitempty"`
+}
+
+type nftablesChainListResult struct {
+	Nftables []nftablesChainListResultEntry `json:"nftables"`
 }
 
 // Takes a slice of strings and produces a list ready to be used in an nftables rule
@@ -343,6 +363,45 @@ func mapProtocol(k8sproto corev1.Protocol) (string, error) {
 	}
 }
 
+// Return all chain names of type `filterTableType` in table `filterTableName` that start with `policyPrefix`.
+// Uses the `nftCommand`.
+func getExistingPolicyChains(nftCommand []string, filterTableName string, filterTableType string, policyPrefix string) ([]string, error) {
+	// Prepare "list chains" command to get all chains of type filterTableType
+	cmd := append(nftCommand, "-j", "list", "chains", filterTableType)
+
+	klog.V(4).Infof("executing command: %#v", cmd)
+
+	cmdObj := exec.Command(cmd[0], cmd[1:]...)
+	cmdObj.Stderr = os.Stderr
+
+	out, err := cmdObj.Output()
+	if err != nil {
+		return []string{}, fmt.Errorf("failed to get exiting policy chains via %#v: %s", cmd, err.Error())
+	}
+
+	// Parse result from JSON
+	var result nftablesChainListResult
+	err = json.Unmarshal(out, &result)
+
+	if err != nil {
+		return []string{}, fmt.Errorf("could not parse existing policy json: %s", err.Error())
+	}
+
+	var existingChains []string
+
+	// Iterate over all returned chains and check if the conditions are met
+	for _, resultEntry := range result.Nftables {
+		if resultEntry.Chain.Family == filterTableType &&
+			resultEntry.Chain.Table == filterTableName &&
+			strings.HasPrefix(resultEntry.Chain.Name, policyPrefix) {
+			// Append chain name to list
+			existingChains = append(existingChains, resultEntry.Chain.Name)
+		}
+	}
+
+	return existingChains, nil
+}
+
 // Generates a config suitable for nftablesTemplate from a LoadBalancer model
 func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nftablesConfig, error) {
 	result := &nftablesConfig{
@@ -358,6 +417,7 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		Forwards:                []nftablesForward{},
 		NetworkPolicies:         map[string]networkPolicy{},
 		PolicyAssignments:       []policyAssignment{},
+		ExistingPolicyChains:    []string{},
 	}
 
 	for _, ingress := range m.Ingress {
@@ -401,6 +461,15 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 	}
 	for _, policy := range policies {
 		result.NetworkPolicies[policy.Name] = policy
+	}
+
+	if g.Cfg.LiveReload {
+		// When live reload is enabled, get all existing policy chain names to delete them in the template
+		result.ExistingPolicyChains, err = getExistingPolicyChains(
+			g.Cfg.NftCommand,
+			result.FilterTableName,
+			result.FilterTableType,
+			result.PolicyPrefix)
 	}
 
 	return result, nil
