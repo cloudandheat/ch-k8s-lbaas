@@ -45,6 +45,8 @@ type ServiceConfig struct {
 }
 
 type Keepalived struct {
+	Enabled bool `toml:"enabled"`
+
 	VRRPPassword string `toml:"vrrp-password"`
 	// TODO: allow different priorities per-service so that inbound traffic
 	// is being balanced between VMs.
@@ -136,7 +138,12 @@ func defaultStringList(field *[]string, value []string) {
 	}
 }
 
+func defaultTrue(field *bool) {
+	*field = true
+}
+
 func FillKeepalivedConfig(cfg *Keepalived) {
+	defaultTrue(&cfg.Enabled)
 	defaultString(&cfg.VRRPPassword, "useless")
 
 	defaultStringList(&cfg.Service.ReloadCommand, []string{"sudo", "systemctl", "reload", "keepalived"})
@@ -193,20 +200,22 @@ func ValidateControllerConfig(cfg *ControllerConfig) error {
 }
 
 func ValidateAgentConfig(cfg *AgentConfig) error {
-	if cfg.Keepalived.VRIDBase <= 0 {
-		return fmt.Errorf("keepalived.virtual-router-id-base must be greater than zero")
-	}
+	if cfg.Keepalived.Enabled {
+		if cfg.Keepalived.VRIDBase <= 0 {
+			return fmt.Errorf("keepalived.virtual-router-id-base must be greater than zero")
+		}
 
-	if cfg.Keepalived.Priority < 0 {
-		return fmt.Errorf("keepalived.priority must be non-negative")
-	}
+		if cfg.Keepalived.Priority < 0 {
+			return fmt.Errorf("keepalived.priority must be non-negative")
+		}
 
-	if cfg.Keepalived.Interface == "" {
-		return fmt.Errorf("keepalived.interface must be set")
-	}
+		if cfg.Keepalived.Interface == "" {
+			return fmt.Errorf("keepalived.interface must be set")
+		}
 
-	if cfg.Keepalived.Service.ConfigFile == "" {
-		return fmt.Errorf("keepalived.service.config-file must be set")
+		if cfg.Keepalived.Service.ConfigFile == "" {
+			return fmt.Errorf("keepalived.service.config-file must be set")
+		}
 	}
 
 	if cfg.Nftables.Service.ConfigFile == "" {

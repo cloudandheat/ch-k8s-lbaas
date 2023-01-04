@@ -61,14 +61,23 @@ func main() {
 		},
 	}
 
-	keepalivedConfig := &agent.ConfigManager{
-		Service: fileCfg.Keepalived.Service,
-		Generator: &agent.KeepalivedConfigGenerator{
-			VRIDBase:     fileCfg.Keepalived.VRIDBase,
-			VRRPPassword: fileCfg.Keepalived.VRRPPassword,
-			Interface:    fileCfg.Keepalived.Interface,
-			Priority:     fileCfg.Keepalived.Priority,
-		},
+	var keepalivedConfig *agent.ConfigManager
+
+	if fileCfg.Keepalived.Enabled {
+		keepalivedConfig = &agent.ConfigManager{
+			Service: fileCfg.Keepalived.Service,
+			Generator: &agent.KeepalivedConfigGenerator{
+				VRIDBase:     fileCfg.Keepalived.VRIDBase,
+				VRRPPassword: fileCfg.Keepalived.VRRPPassword,
+				Interface:    fileCfg.Keepalived.Interface,
+				Priority:     fileCfg.Keepalived.Priority,
+			},
+		}
+	}
+
+	// If LiveReload is enabled, reload nftables config directly after start to apply last state
+	if fileCfg.Nftables.LiveReload {
+		nftablesConfig.Reload()
 	}
 
 	http.Handle("/v1/apply", &agent.ApplyHandlerv1{
