@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/static"
 	"io"
 	"os"
 
@@ -81,9 +82,11 @@ type Agents struct {
 
 type ControllerConfig struct {
 	BindAddress string `toml:"bind-address"`
+	PortManager string `toml:"port-manager"` // "openstack" or "static"
 	BindPort    int32  `toml:"bind-port"`
 
 	OpenStack    openstack.Config `toml:"openstack"`
+	Static       static.Config    `toml:"static"`
 	Agents       Agents           `toml:"agents"`
 	BackendLayer BackendLayer     `toml:"backend-layer"`
 }
@@ -175,6 +178,8 @@ func FillAgentConfig(cfg *AgentConfig) {
 }
 
 func FillControllerConfig(cfg *ControllerConfig) {
+	defaultString(&cfg.PortManager, "openstack")
+
 	if cfg.BindPort == 0 {
 		cfg.BindPort = 15203
 	}
@@ -194,6 +199,15 @@ func ValidateControllerConfig(cfg *ControllerConfig) error {
 		break
 	default:
 		return fmt.Errorf("backend-layer has an invalid value: %q", cfg.BackendLayer)
+	}
+
+	if cfg.PortManager == "openstack" {
+		// TODO: Add openstack config validation.
+	} else if cfg.PortManager == "static" {
+		if len(cfg.Static.IPv4Addresses) == 0 {
+			return fmt.Errorf("static.ipv4-addresses must have at least one " +
+				"entry if static port manager is used")
+		}
 	}
 
 	return nil
