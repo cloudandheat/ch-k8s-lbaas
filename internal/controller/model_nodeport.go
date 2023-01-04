@@ -25,7 +25,6 @@ import (
 	"k8s.io/klog"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 var (
@@ -33,13 +32,13 @@ var (
 )
 
 type NodePortLoadBalancerModelGenerator struct {
-	l3portmanager openstack.L3PortManager
+	l3portmanager L3PortManager
 	services      corelisters.ServiceLister
 	nodes         corelisters.NodeLister
 }
 
 func NewNodePortLoadBalancerModelGenerator(
-	l3portmanager openstack.L3PortManager,
+	l3portmanager L3PortManager,
 	services corelisters.ServiceLister,
 	nodes corelisters.NodeLister) *NodePortLoadBalancerModelGenerator {
 	return &NodePortLoadBalancerModelGenerator{

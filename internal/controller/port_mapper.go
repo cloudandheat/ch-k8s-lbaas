@@ -22,7 +22,6 @@ import (
 	"k8s.io/klog"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 var (
@@ -67,12 +66,12 @@ type PortMapper interface {
 }
 
 type PortMapperImpl struct {
-	l3manager openstack.L3PortManager
+	l3manager L3PortManager
 	services  map[string]model.ServiceModel
 	l3ports   map[string]model.L3Port
 }
 
-func NewPortMapper(l3manager openstack.L3PortManager) PortMapper {
+func NewPortMapper(l3manager L3PortManager) PortMapper {
 	return &PortMapperImpl{
 		l3manager: l3manager,
 		services:  make(map[string]model.ServiceModel),
@@ -256,6 +255,9 @@ func (c *PortMapperImpl) UnmapService(id model.ServiceIdentifier) error {
 	return nil
 }
 
+// SetAvailableL3Ports Mark a list of l3 ports as available.
+// All other l3 ports are removed from the l3ports list.
+// All services that belong to other ports are removed from the services list and will be returned.
 func (c *PortMapperImpl) SetAvailableL3Ports(portIDs []string) ([]model.ServiceIdentifier, error) {
 	vlog := klog.V(4)
 

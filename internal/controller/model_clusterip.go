@@ -18,16 +18,15 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 type ClusterIPLoadBalancerModelGenerator struct {
-	l3portmanager openstack.L3PortManager
+	l3portmanager L3PortManager
 	services      corelisters.ServiceLister
 }
 
 func NewClusterIPLoadBalancerModelGenerator(
-	l3portmanager openstack.L3PortManager,
+	l3portmanager L3PortManager,
 	services corelisters.ServiceLister) *ClusterIPLoadBalancerModelGenerator {
 	return &ClusterIPLoadBalancerModelGenerator{
 		l3portmanager: l3portmanager,
