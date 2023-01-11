@@ -3,8 +3,8 @@ name: Docker
 on:
   push:
     # Publish `master` as Docker `latest` image.
-    branches:
-      - master
+    # Other branches with the git ref as branch
+    branches: "*"
 
     # Publish `v1.2.3` tags as releases.
     tags:
