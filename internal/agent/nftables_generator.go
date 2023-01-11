@@ -99,6 +99,7 @@ table {{ .FilterTableType }} {{ .FilterTableName }} {
 }
 
 table ip {{ .NATTableName }} {
+{{- if $cfg.EnableSNAT }}
 	chain {{ .NATPreroutingChainName }} {
 {{- range $fwd := .Forwards }}
 {{- if ne ($fwd.DestinationAddresses | len) 0 }}
@@ -108,6 +109,7 @@ table ip {{ .NATTableName }} {
 {{- end }}
 {{- end }}
 	}
+{{- end }}
 
 	chain {{ .NATPostroutingChainName }} {
 		mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} masquerade;
@@ -174,6 +176,7 @@ type nftablesConfig struct {
 	NetworkPolicies         map[string]networkPolicy
 	PolicyAssignments       []policyAssignment
 	ExistingPolicyChains    []string
+	EnableSNAT              bool
 }
 
 type NftablesGenerator struct {
@@ -424,6 +427,7 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		NetworkPolicies:         map[string]networkPolicy{},
 		PolicyAssignments:       []policyAssignment{},
 		ExistingPolicyChains:    []string{},
+		EnableSNAT:              g.Cfg.EnableSNAT,
 	}
 
 	for _, ingress := range m.Ingress {

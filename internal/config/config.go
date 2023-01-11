@@ -68,6 +68,7 @@ type Nftables struct {
 	PolicyPrefix            string   `toml:"policy-prefix"`
 	NftCommand              []string `toml:"nft-command"`
 	LiveReload              bool     `toml:"live-reload"`
+	EnableSNAT              bool     `toml:"enable-snat"`
 	FWMarkBits              uint32   `toml:"fwmark-bits"`
 	FWMarkMask              uint32   `toml:"fwmark-mask"`
 
@@ -162,6 +163,7 @@ func FillNftablesConfig(cfg *Nftables) {
 	defaultString(&cfg.NATPreroutingChainName, "prerouting")
 	defaultString(&cfg.NATPostroutingChainName, "postrouting")
 	defaultStringList(&cfg.NftCommand, []string{"sudo", "nft"})
+	defaultTrue(&cfg.EnableSNAT)
 
 	if cfg.FWMarkBits == 0 {
 		cfg.FWMarkBits = 1
