@@ -142,12 +142,7 @@ func defaultStringList(field *[]string, value []string) {
 	}
 }
 
-func defaultTrue(field *bool) {
-	*field = true
-}
-
 func FillKeepalivedConfig(cfg *Keepalived) {
-	defaultTrue(&cfg.Enabled)
 	defaultString(&cfg.VRRPPassword, "useless")
 
 	defaultStringList(&cfg.Service.ReloadCommand, []string{"sudo", "systemctl", "reload", "keepalived"})
@@ -163,7 +158,6 @@ func FillNftablesConfig(cfg *Nftables) {
 	defaultString(&cfg.NATPreroutingChainName, "prerouting")
 	defaultString(&cfg.NATPostroutingChainName, "postrouting")
 	defaultStringList(&cfg.NftCommand, []string{"sudo", "nft"})
-	defaultTrue(&cfg.EnableSNAT)
 
 	if cfg.FWMarkBits == 0 {
 		cfg.FWMarkBits = 1

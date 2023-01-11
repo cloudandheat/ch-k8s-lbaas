@@ -184,7 +184,7 @@ func TestFillAgentConfig(t *testing.T) {
 	assert.Equal(t, int32(0), cfg.BindPort)
 
 	kc := &cfg.Keepalived
-	assert.Equal(t, true, kc.Enabled)
+	assert.Equal(t, false, kc.Enabled)
 	assert.Equal(t, "", kc.Service.ConfigFile)
 	assert.Equal(t, 0, kc.Priority)
 	assert.Equal(t, "useless", kc.VRRPPassword)
@@ -200,5 +200,5 @@ func TestFillAgentConfig(t *testing.T) {
 	assert.Equal(t, "", nftc.PolicyPrefix)
 	assert.Equal(t, []string{"sudo", "nft"}, nftc.NftCommand)
 	assert.Equal(t, false, nftc.LiveReload)
-	assert.Equal(t, true, nftc.EnableSNAT)
+	assert.Equal(t, false, nftc.EnableSNAT)
 }
