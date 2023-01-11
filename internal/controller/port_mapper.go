@@ -72,11 +72,23 @@ type PortMapperImpl struct {
 }
 
 func NewPortMapper(l3manager L3PortManager) PortMapper {
-	return &PortMapperImpl{
+	portManager := &PortMapperImpl{
 		l3manager: l3manager,
 		services:  make(map[string]model.ServiceModel),
 		l3ports:   make(map[string]model.L3Port),
 	}
+
+	// Load all available ports
+	l3portIDs, err := l3manager.GetAvailablePorts()
+	if err == nil {
+		for _, l3portID := range l3portIDs {
+			portManager.emplaceL3Port(l3portID)
+		}
+	} else {
+		klog.Warningf("port mapper could not load available l3ports: %s", err)
+	}
+
+	return portManager
 }
 
 func (c *PortMapperImpl) getServiceKey(svc *corev1.Service) string {

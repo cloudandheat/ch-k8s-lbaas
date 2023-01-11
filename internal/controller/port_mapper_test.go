@@ -34,6 +34,9 @@ type portMapperFixture struct {
 
 func newPortMapperFixture() *portMapperFixture {
 	l3portmanager := ostesting.NewMockL3PortManager()
+
+	l3portmanager.On("GetAvailablePorts").Return([]string{}, nil).Times(1)
+
 	return &portMapperFixture{
 		l3portmanager: l3portmanager,
 		portmapper:    NewPortMapper(l3portmanager),
