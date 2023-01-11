@@ -209,6 +209,12 @@ func ValidateControllerConfig(cfg *ControllerConfig) error {
 		if len(cfg.Static.IPv4Addresses) == 0 {
 			return fmt.Errorf("static.ipv4-addresses must have at least one " +
 				"entry if static port manager is used")
+		} else {
+			for _, addr := range cfg.Static.IPv4Addresses {
+				if !addr.Is4() {
+					return fmt.Errorf("%s isn't a valid IPv4 address", addr.String())
+				}
+			}
 		}
 	}
 
