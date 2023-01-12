@@ -476,12 +476,33 @@ func TestMapServiceWithAnnotationInjectsThePortWithoutAllocation(t *testing.T) {
 	s.Annotations = make(map[string]string)
 	s.Annotations[AnnotationInboundPort] = "port-id-x"
 
+	f.l3portmanager.On("GetInternalAddress", "port-id-x").Return("111.111.111.111", nil)
+
 	err := f.portmapper.MapService(s)
 	assert.Nil(t, err)
 
 	portID, err := f.portmapper.GetServiceL3Port(model.FromService(s))
 	assert.Nil(t, err)
 	assert.Equal(t, "port-id-x", portID)
+}
+
+func TestMapServiceWithAnnotationRejectsInvalidPort(t *testing.T) {
+	f := newPortMapperFixture()
+	s := newPortMapperService("test-service-1")
+	s.Annotations = make(map[string]string)
+	s.Annotations[AnnotationInboundPort] = "port-id-x"
+
+	f.l3portmanager.On("GetInternalAddress", "port-id-x").Return(
+		"",
+		fmt.Errorf("invalid port id"))
+	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
+
+	err := f.portmapper.MapService(s)
+	assert.Nil(t, err)
+
+	portID, err := f.portmapper.GetServiceL3Port(model.FromService(s))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
 }
 
 func TestMapServiceWithAnnotationIsMovedToAnotherPortOnConflict(t *testing.T) {
