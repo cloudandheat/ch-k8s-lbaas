@@ -161,8 +161,6 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 
 	if portID != "" {
 		// the service has a preferred port
-		// TODO: retrieve port information from backend to ensure that it really
-		// exists!
 		l3port, exists := c.l3ports[portID]
 		if exists {
 			// the port is already known and thus may have allocations. we have
@@ -178,7 +176,17 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 				portID = ""
 			}
 		} else {
-			c.emplaceL3Port(portID)
+			// retrieve port information from backend to ensure that it really exists!
+			_, err := c.l3manager.GetInternalAddress(portID)
+			if err != nil {
+				klog.Warningf(
+					"relocating service %q because it has an invalid port %s",
+					key,
+					portID)
+				portID = ""
+			} else {
+				c.emplaceL3Port(portID)
+			}
 		}
 	}
 
