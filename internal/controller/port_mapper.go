@@ -194,7 +194,6 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 			// if no existing port can fit the bill, we move on to create a new
 			// port
 			portID, err = c.createNewL3Port()
-			klog.Infof("Created new port with portID=%v", portID)
 			if err != nil {
 				// if that fails too, we simply cannot map the service.
 				return err
