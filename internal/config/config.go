@@ -151,6 +151,7 @@ func FillKeepalivedConfig(cfg *Keepalived) {
 }
 
 func FillNftablesConfig(cfg *Nftables) {
+	// TODO: Add default values before parsing toml
 	defaultString(&cfg.FilterTableName, "filter")
 	defaultString(&cfg.FilterTableType, "inet")
 	defaultString(&cfg.FilterForwardChainName, "forward")
@@ -210,6 +211,8 @@ func ValidateControllerConfig(cfg *ControllerConfig) error {
 				}
 			}
 		}
+	} else {
+		return fmt.Errorf("%s is not a valid port-manager implementation", cfg.PortManager)
 	}
 
 	return nil
