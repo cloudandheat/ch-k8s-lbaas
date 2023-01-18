@@ -477,9 +477,9 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		// When live reload is enabled, get all existing policy chain names to delete them in the template
 		result.ExistingPolicyChains, err = getExistingPolicyChains(
 			g.Cfg.NftCommand,
-			result.FilterTableName,
-			result.FilterTableType,
-			result.PolicyPrefix)
+			g.Cfg.FilterTableName,
+			g.Cfg.FilterTableType,
+			g.Cfg.PolicyPrefix)
 	}
 
 	return result, nil
