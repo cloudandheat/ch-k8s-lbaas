@@ -1,14 +1,16 @@
 package controller
 
 type L3PortManager interface {
-	// ProvisionPort Create a new L3 port and return its id
+	// ProvisionPort creates a new L3 port and returns its id
 	ProvisionPort() (string, error)
-	// CleanUnusedPorts Delete all L3 ports that are currently not used
+	// CleanUnusedPorts deletes all L3 ports that are currently not used
 	CleanUnusedPorts(usedPorts []string) error
-	// GetAvailablePorts Return all L3 ports that are available
+	// GetAvailablePorts return all L3 ports that are available
 	GetAvailablePorts() ([]string, error)
-	// GetExternalAddress For a given portID, return the external address (floating IP) and hostname
+	// GetExternalAddress returns the external address (floating IP) and hostname for a given portID
 	GetExternalAddress(portID string) (string, string, error)
-	// GetInternalAddress For a given portID, return the internal address (target of the floating IP)
+	// GetInternalAddress returns the internal address (target of the floating IP) for a given portID,
 	GetInternalAddress(portID string) (string, error)
+	// CheckPortExists checks if there exists a port for the given portID
+	CheckPortExists(portID string) (bool, error)
 }

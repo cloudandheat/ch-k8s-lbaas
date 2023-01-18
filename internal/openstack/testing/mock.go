@@ -28,6 +28,11 @@ func NewMockL3PortManager() *MockL3PortManager {
 	return new(MockL3PortManager)
 }
 
+func (m *MockL3PortManager) CheckPortExists(portID string) (bool, error) {
+	a := m.Called(portID)
+	return a.Bool(0), a.Error(1)
+}
+
 func (m *MockL3PortManager) ProvisionPort() (string, error) {
 	a := m.Called()
 	return a.String(0), a.Error(1)

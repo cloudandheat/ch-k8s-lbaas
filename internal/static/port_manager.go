@@ -22,19 +22,19 @@ func NewStaticL3PortManager(config *Config) (*StaticL3PortManager, error) {
 	}, nil
 }
 
-func (pm *StaticL3PortManager) checkPortExists(portID string) bool {
+func (pm *StaticL3PortManager) CheckPortExists(portID string) (bool, error) {
 	// TODO: Add ipv6 support
 	addr, err := netip.ParseAddr(portID)
 
 	if err != nil {
-		return false
+		return false, nil
 	}
 
 	if !slices.Contains(pm.cfg.IPv4Addresses, addr) {
-		return false
+		return false, nil
 	}
 
-	return true
+	return true, nil
 }
 
 func (pm *StaticL3PortManager) ProvisionPort() (string, error) {
@@ -56,7 +56,8 @@ func (pm *StaticL3PortManager) GetAvailablePorts() ([]string, error) {
 }
 
 func (pm *StaticL3PortManager) GetExternalAddress(portID string) (string, string, error) {
-	if !pm.checkPortExists(portID) {
+	exists, err := pm.CheckPortExists(portID)
+	if !exists || err != nil {
 		return "", "", fmt.Errorf("%s is not a valid load-balancer address", portID)
 	}
 
@@ -64,7 +65,8 @@ func (pm *StaticL3PortManager) GetExternalAddress(portID string) (string, string
 }
 
 func (pm *StaticL3PortManager) GetInternalAddress(portID string) (string, error) {
-	if !pm.checkPortExists(portID) {
+	exists, err := pm.CheckPortExists(portID)
+	if !exists || err != nil {
 		return "", fmt.Errorf("%s is not a valid load-balancer address", portID)
 	}
 

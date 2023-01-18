@@ -182,6 +182,8 @@ func TestRemappingTheSameServiceDoesNotChangePorts(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "port-id-2", portID)
 
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(true, nil).Times(1)
+
 	err = f.portmapper.MapService(s1)
 	assert.Nil(t, err)
 
@@ -213,6 +215,8 @@ func TestRemappingTheSameServiceWithoutAnnotationIsHandledGracefully(t *testing.
 	assert.Nil(t, err)
 	assert.Equal(t, "port-id-2", portID)
 
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(true, nil).Times(1)
+
 	err = f.portmapper.MapService(s1)
 	assert.Nil(t, err)
 
@@ -243,6 +247,8 @@ func TestRemappingAnUpdatedServiceWithAnnotationDoesNotAllocateANewPort(t *testi
 	setPortAnnotation(s1, portID)
 	s1.Spec.Ports = append(s1.Spec.Ports, corev1.ServicePort{Protocol: corev1.ProtocolUDP, Port: 53})
 
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(true, nil).Times(1)
+
 	err = f.portmapper.MapService(s1)
 	assert.Nil(t, err)
 
@@ -265,6 +271,8 @@ func TestRemappingAnUpdatedServiceWithoutAnnotationDoesNotAllocateANewPort(t *te
 	assert.Equal(t, "port-id-1", portID)
 
 	s1.Spec.Ports = append(s1.Spec.Ports, corev1.ServicePort{Protocol: corev1.ProtocolUDP, Port: 53})
+
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(true, nil).Times(1)
 
 	err = f.portmapper.MapService(s1)
 	assert.Nil(t, err)
@@ -290,6 +298,8 @@ func TestRemappingAnUpdatedServiceWithStaleAnnotationDoesNotAllocateANewPort(t *
 	setPortAnnotation(s1, "old-port-id")
 	s1.Spec.Ports = append(s1.Spec.Ports, corev1.ServicePort{Protocol: corev1.ProtocolUDP, Port: 53})
 
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(true, nil).Times(1)
+
 	err = f.portmapper.MapService(s1)
 	assert.Nil(t, err)
 
@@ -314,6 +324,8 @@ func TestRemappingAnUpdatedServiceWithAnnotationClearsOldAllocations(t *testing.
 
 	setPortAnnotation(s1, portID)
 	s1.Spec.Ports = []corev1.ServicePort{{Protocol: corev1.ProtocolUDP, Port: 53}}
+
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(true, nil).Times(2)
 
 	err = f.portmapper.MapService(s1)
 	assert.Nil(t, err)
@@ -476,7 +488,7 @@ func TestMapServiceWithAnnotationInjectsThePortWithoutAllocation(t *testing.T) {
 	s.Annotations = make(map[string]string)
 	s.Annotations[AnnotationInboundPort] = "port-id-x"
 
-	f.l3portmanager.On("GetInternalAddress", "port-id-x").Return("111.111.111.111", nil)
+	f.l3portmanager.On("CheckPortExists", "port-id-x").Return(true, nil).Times(1)
 
 	err := f.portmapper.MapService(s)
 	assert.Nil(t, err)
@@ -492,9 +504,7 @@ func TestMapServiceWithAnnotationRejectsInvalidPort(t *testing.T) {
 	s.Annotations = make(map[string]string)
 	s.Annotations[AnnotationInboundPort] = "port-id-x"
 
-	f.l3portmanager.On("GetInternalAddress", "port-id-x").Return(
-		"",
-		fmt.Errorf("invalid port id"))
+	f.l3portmanager.On("CheckPortExists", "port-id-x").Return(false, nil).Times(1)
 	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
 
 	err := f.portmapper.MapService(s)
@@ -522,6 +532,8 @@ func TestMapServiceWithAnnotationIsMovedToAnotherPortOnConflict(t *testing.T) {
 	portID, err := f.portmapper.GetServiceL3Port(model.FromService(s1))
 	assert.Nil(t, err)
 	assert.Equal(t, "port-id-1", portID)
+
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(true, nil).Times(1)
 
 	err = f.portmapper.MapService(s2)
 	assert.Nil(t, err)
@@ -675,4 +687,35 @@ func TestMapServiceMakesServiceAppearInModel(t *testing.T) {
 	port, ok = pmmodel[s2k]
 	assert.True(t, ok)
 	assert.Equal(t, s2p, port)
+}
+
+func TestServiceWithInvalidPortIsRemapped(t *testing.T) {
+	f := newPortMapperFixture()
+	s1 := newPortMapperService("test-service-1")
+
+	f.l3portmanager.On("ProvisionPort").Return("port-id-1", nil).Times(1)
+
+	err := f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	// Port exists, expect no change
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(true, nil).Times(1)
+
+	err = f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err := f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-1", portID)
+
+	// Port does not exist, expect change
+	f.l3portmanager.On("CheckPortExists", "port-id-1").Return(false, nil).Times(1)
+	f.l3portmanager.On("ProvisionPort").Return("port-id-2", nil).Times(1)
+
+	err = f.portmapper.MapService(s1)
+	assert.Nil(t, err)
+
+	portID, err = f.portmapper.GetServiceL3Port(model.FromService(s1))
+	assert.Nil(t, err)
+	assert.Equal(t, "port-id-2", portID)
 }

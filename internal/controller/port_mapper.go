@@ -161,29 +161,34 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 
 	if portID != "" {
 		// the service has a preferred port
-		l3port, exists := c.l3ports[portID]
-		if exists {
-			// the port is already known and thus may have allocations. we have
-			// to check if any allocations conflict
-			if !c.isPortSuitableFor(l3port, svcModel.Ports, key) {
-				// and they do! so we have to relocate the service to a
-				// different port
-				// TODO: it would be good if that caused an event on the Service
-				klog.Warningf(
-					"relocating service %q to a new port due to conflict on old port %s",
-					key,
-					portID)
-				portID = ""
-			}
+
+		// Check if port exists in backend
+		exists, err := c.l3manager.CheckPortExists(portID)
+		if err != nil {
+			return err
+		}
+
+		if !exists {
+			klog.Warningf(
+				"relocating service %q because it has an invalid port %s",
+				key,
+				portID)
+			portID = ""
 		} else {
-			// retrieve port information from backend to ensure that it really exists!
-			_, err := c.l3manager.GetInternalAddress(portID)
-			if err != nil {
-				klog.Warningf(
-					"relocating service %q because it has an invalid port %s",
-					key,
-					portID)
-				portID = ""
+			l3port, exists := c.l3ports[portID]
+			if exists {
+				// the port is already known and thus may have allocations. we have
+				// to check if any allocations conflict
+				if !c.isPortSuitableFor(l3port, svcModel.Ports, key) {
+					// and they do! so we have to relocate the service to a
+					// different port
+					// TODO: it would be good if that caused an event on the Service
+					klog.Warningf(
+						"relocating service %q to a new port due to conflict on old port %s",
+						key,
+						portID)
+					portID = ""
+				}
 			} else {
 				c.emplaceL3Port(portID)
 			}
