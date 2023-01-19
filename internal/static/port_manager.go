@@ -46,7 +46,7 @@ func (pm *StaticL3PortManager) CleanUnusedPorts(usedPorts []string) error {
 }
 
 func (pm *StaticL3PortManager) GetAvailablePorts() ([]string, error) {
-	ports := make([]string, len(pm.cfg.IPv4Addresses))
+	var ports []string
 
 	for _, addr := range pm.cfg.IPv4Addresses {
 		ports = append(ports, addr.String())
