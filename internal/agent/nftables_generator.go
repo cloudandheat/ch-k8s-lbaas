@@ -372,11 +372,10 @@ func mapProtocol(k8sproto corev1.Protocol) (string, error) {
 	}
 }
 
-// Return all chain names of type `filterTableType` in table `filterTableName` that start with `policyPrefix`.
-// Uses the `nftCommand`.
-func getExistingPolicyChains(nftCommand []string, filterTableName string, filterTableType string, policyPrefix string) ([]string, error) {
-	// Prepare "list chains" command to get all chains of type filterTableType
-	cmd := append(nftCommand, "-j", "list", "chains", filterTableType)
+// fetchNftablesChainList returns a result object with all nftables chains in `tableName` using the `nftCommand`.
+func fetchNftablesChainList(nftCommand []string, tableName string) (result nftablesChainListResult, err error) {
+	// Prepare "list chains" command to get all chains of type tableName
+	cmd := append(nftCommand, "-j", "list", "chains", tableName)
 
 	klog.V(4).Infof("executing command: %#v", cmd)
 
@@ -385,28 +384,42 @@ func getExistingPolicyChains(nftCommand []string, filterTableName string, filter
 
 	out, err := cmdObj.Output()
 	if err != nil {
-		return []string{}, fmt.Errorf("failed to get exiting policy chains via %#v: %s", cmd, err.Error())
+		return result, fmt.Errorf("failed to get exiting policy chains via %#v: %s", cmd, err.Error())
 	}
 
 	// Parse result from JSON
-	var result nftablesChainListResult
 	err = json.Unmarshal(out, &result)
-
 	if err != nil {
-		return []string{}, fmt.Errorf("could not parse existing policy json: %s", err.Error())
+		return result, fmt.Errorf("could not parse existing policy json: %s", err.Error())
 	}
 
-	var existingChains []string
+	return result, nil
+}
 
+// filterNftablesChainListByPrefix filters a given chain list by `tableName`, `tableType` and `pefix`.
+func filterNftablesChainListByPrefix(chains nftablesChainListResult, tableName string, tableType string, prefix string) (filteredChains []string) {
 	// Iterate over all returned chains and check if the conditions are met
-	for _, resultEntry := range result.Nftables {
-		if resultEntry.Chain.Family == filterTableType &&
-			resultEntry.Chain.Table == filterTableName &&
-			strings.HasPrefix(resultEntry.Chain.Name, policyPrefix) {
+	for _, resultEntry := range chains.Nftables {
+		if resultEntry.Chain.Family == tableType &&
+			resultEntry.Chain.Table == tableName &&
+			strings.HasPrefix(resultEntry.Chain.Name, prefix) {
 			// Append chain name to list
-			existingChains = append(existingChains, resultEntry.Chain.Name)
+			filteredChains = append(filteredChains, resultEntry.Chain.Name)
 		}
 	}
+
+	return filteredChains
+}
+
+// getExistingPolicyChains returns all chain names of type `filterTableType` in table `filterTableName` that
+// start with `policyPrefix`. Uses the `nftCommand` to retrieve the list via fetchNftablesChainList.
+func getExistingPolicyChains(nftCommand []string, filterTableName string, filterTableType string, policyPrefix string) (existingChains []string, err error) {
+	chains, err := fetchNftablesChainList(nftCommand, filterTableName)
+	if err != nil {
+		return existingChains, err
+	}
+
+	existingChains = filterNftablesChainListByPrefix(chains, filterTableName, filterTableType, policyPrefix)
 
 	return existingChains, nil
 }
