@@ -372,10 +372,10 @@ func mapProtocol(k8sproto corev1.Protocol) (string, error) {
 	}
 }
 
-// fetchNftablesChainList returns a result object with all nftables chains in `tableName` using the `nftCommand`.
-func fetchNftablesChainList(nftCommand []string, tableName string) (result nftablesChainListResult, err error) {
-	// Prepare "list chains" command to get all chains of type tableName
-	cmd := append(nftCommand, "-j", "list", "chains", tableName)
+// fetchNftablesChainList returns a result object with all nftables chains of type `tableType` using the `nftCommand`.
+func fetchNftablesChainList(nftCommand []string, tableType string) (result nftablesChainListResult, err error) {
+	// Prepare "list chains" command to get all chains of type tableType
+	cmd := append(nftCommand, "-j", "list", "chains", tableType)
 
 	klog.V(4).Infof("executing command: %#v", cmd)
 
@@ -396,7 +396,7 @@ func fetchNftablesChainList(nftCommand []string, tableName string) (result nftab
 	return result, nil
 }
 
-// filterNftablesChainListByPrefix filters a given chain list by `tableName`, `tableType` and `pefix`.
+// filterNftablesChainListByPrefix filters a given chain list by `tableName`, `tableType` and `prefix`.
 func filterNftablesChainListByPrefix(chains nftablesChainListResult, tableName string, tableType string, prefix string) (filteredChains []string) {
 	// Iterate over all returned chains and check if the conditions are met
 	for _, resultEntry := range chains.Nftables {
@@ -414,7 +414,7 @@ func filterNftablesChainListByPrefix(chains nftablesChainListResult, tableName s
 // getExistingPolicyChains returns all chain names of type `filterTableType` in table `filterTableName` that
 // start with `policyPrefix`. Uses the `nftCommand` to retrieve the list via fetchNftablesChainList.
 func getExistingPolicyChains(nftCommand []string, filterTableName string, filterTableType string, policyPrefix string) (existingChains []string, err error) {
-	chains, err := fetchNftablesChainList(nftCommand, filterTableName)
+	chains, err := fetchNftablesChainList(nftCommand, filterTableType)
 	if err != nil {
 		return existingChains, err
 	}
