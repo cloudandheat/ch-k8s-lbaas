@@ -38,12 +38,11 @@ func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
 
-	fileCfg, err := config.ReadAgentConfigFromFile(configPath)
+	fileCfg, err := config.ReadAgentConfigFromFile(configPath, true)
 	if err != nil {
 		klog.Fatalf("Failed reading config: %s", err.Error())
 	}
 
-	config.FillAgentConfig(&fileCfg)
 	err = config.ValidateAgentConfig(&fileCfg)
 	if err != nil {
 		klog.Fatalf("invalid configuration: %s", err.Error())

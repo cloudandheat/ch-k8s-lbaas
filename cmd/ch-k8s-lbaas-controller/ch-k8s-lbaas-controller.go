@@ -66,11 +66,10 @@ func main() {
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*300)
 
-	fileCfg, err := config.ReadControllerConfigFromFile(configPath)
+	fileCfg, err := config.ReadControllerConfigFromFile(configPath, true)
 	if err != nil {
 		klog.Fatalf("Failed reading config: %s", err.Error())
 	}
-	config.FillControllerConfig(&fileCfg)
 
 	err = config.ValidateControllerConfig(&fileCfg)
 	if err != nil {

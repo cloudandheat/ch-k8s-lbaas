@@ -74,7 +74,6 @@ bind-address="192.168.23.42"
 bind-port=31337
 
 [keepalived]
-enabled=true
 priority=120
 vrrp-password="bogus"
 
@@ -92,7 +91,6 @@ nat-postrouting-chain="postrouting"
 
 policy-prefix="lbaas-"
 live-reload=true
-enable-snat=true
 nft-command=["sudo", "nft"]
 
 [nftables.service]
@@ -102,7 +100,8 @@ config-file="/etc/nft/nft.d/foo.conf"
 
 func TestCanReadControllerConfig(t *testing.T) {
 	r := strings.NewReader(controllerCfgBlob)
-	cfg, err := ReadControllerConfig(r)
+	cfg := ControllerConfig{}
+	err := ReadControllerConfig(r, &cfg)
 	assert.Nil(t, err)
 
 	// check openstack options
@@ -148,7 +147,8 @@ func TestCanReadControllerConfig(t *testing.T) {
 
 func TestCanReadAgentConfig(t *testing.T) {
 	r := strings.NewReader(agentCfgBlob)
-	cfg, err := ReadAgentConfig(r)
+	cfg := AgentConfig{}
+	err := ReadAgentConfig(r, &cfg)
 	assert.Nil(t, err)
 
 	assert.Equal(t, "some-base64-blob", cfg.SharedSecret)
@@ -156,7 +156,7 @@ func TestCanReadAgentConfig(t *testing.T) {
 	assert.Equal(t, int32(31337), cfg.BindPort)
 
 	kc := &cfg.Keepalived
-	assert.Equal(t, true, kc.Enabled)
+	assert.Equal(t, false, kc.Enabled)
 	assert.Equal(t, 120, kc.Priority)
 	assert.Equal(t, "bogus", kc.VRRPPassword)
 	assert.Equal(t, "/etc/keepalived/conf.d/foo.conf", kc.Service.ConfigFile)
@@ -172,19 +172,18 @@ func TestCanReadAgentConfig(t *testing.T) {
 	assert.Equal(t, "lbaas-", nftc.PolicyPrefix)
 	assert.Equal(t, []string{"sudo", "nft"}, nftc.NftCommand)
 	assert.Equal(t, true, nftc.LiveReload)
-	assert.Equal(t, true, nftc.EnableSNAT)
+	assert.Equal(t, false, nftc.EnableSNAT)
 }
 
 func TestFillAgentConfig(t *testing.T) {
 	cfg := AgentConfig{}
 	FillAgentConfig(&cfg)
-
 	assert.Equal(t, "", cfg.SharedSecret)
 	assert.Equal(t, "", cfg.BindAddress)
 	assert.Equal(t, int32(0), cfg.BindPort)
 
 	kc := &cfg.Keepalived
-	assert.Equal(t, false, kc.Enabled)
+	assert.Equal(t, true, kc.Enabled)
 	assert.Equal(t, "", kc.Service.ConfigFile)
 	assert.Equal(t, 0, kc.Priority)
 	assert.Equal(t, "useless", kc.VRRPPassword)
@@ -200,5 +199,29 @@ func TestFillAgentConfig(t *testing.T) {
 	assert.Equal(t, "", nftc.PolicyPrefix)
 	assert.Equal(t, []string{"sudo", "nft"}, nftc.NftCommand)
 	assert.Equal(t, false, nftc.LiveReload)
-	assert.Equal(t, false, nftc.EnableSNAT)
+	assert.Equal(t, true, nftc.EnableSNAT)
+}
+
+func TestAgentConfigWithDefaults(t *testing.T) {
+	r := strings.NewReader(agentCfgBlob)
+	cfg := AgentConfig{}
+
+	FillAgentConfig(&cfg)
+
+	err := ReadAgentConfig(r, &cfg)
+	assert.Nil(t, err)
+
+	assert.True(t, cfg.Keepalived.Enabled)
+	assert.True(t, cfg.Nftables.EnableSNAT)
+	assert.Equal(t, "lbaas-", cfg.Nftables.PolicyPrefix)
+	assert.Equal(t, "bogus", cfg.Keepalived.VRRPPassword)
+}
+
+func TestFillControllerConfig(t *testing.T) {
+	cfg := ControllerConfig{}
+	FillControllerConfig(&cfg)
+
+	assert.Equal(t, "openstack", cfg.PortManager)
+	assert.Equal(t, BackendLayerNodePort, cfg.BackendLayer)
+	assert.Equal(t, int32(15203), cfg.BindPort)
 }

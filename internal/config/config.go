@@ -101,72 +101,87 @@ type AgentConfig struct {
 	Nftables   Nftables   `toml:"nftables"`
 }
 
-func ReadControllerConfig(config io.Reader) (result ControllerConfig, err error) {
-	_, err = toml.DecodeReader(config, &result)
-	return result, err
+func ReadControllerConfig(configReader io.Reader, config *ControllerConfig) error {
+	_, err := toml.DecodeReader(configReader, &config)
+	return err
 }
 
-func ReadControllerConfigFromFile(path string) (ControllerConfig, error) {
+func ReadControllerConfigFromFile(path string, withDefaults bool) (ControllerConfig, error) {
 	fin, err := os.Open(path)
 	if err != nil {
 		return ControllerConfig{}, err
 	}
 	defer fin.Close()
-	return ReadControllerConfig(fin)
+
+	config := ControllerConfig{}
+	if withDefaults {
+		// Fill config before decoding toml to allow boolean default values
+		// See https://github.com/BurntSushi/toml/issues/171
+		FillControllerConfig(&config)
+	}
+
+	err = ReadControllerConfig(fin, &config)
+	if err != nil {
+		return ControllerConfig{}, err
+	}
+
+	return config, nil
 }
 
-func ReadAgentConfig(config io.Reader) (result AgentConfig, err error) {
-	_, err = toml.DecodeReader(config, &result)
-	return result, err
+func ReadAgentConfig(configFile io.Reader, config *AgentConfig) error {
+	_, err := toml.DecodeReader(configFile, &config)
+	return err
 }
 
-func ReadAgentConfigFromFile(path string) (AgentConfig, error) {
+func ReadAgentConfigFromFile(path string, withDefaults bool) (AgentConfig, error) {
 	fin, err := os.Open(path)
 	if err != nil {
 		return AgentConfig{}, err
 	}
 	defer fin.Close()
-	return ReadAgentConfig(fin)
-}
 
-func defaultString(field *string, value string) {
-	if *field == "" {
-		*field = value
+	config := AgentConfig{}
+	if withDefaults {
+		// Fill config before decoding toml to allow boolean default values
+		// See https://github.com/BurntSushi/toml/issues/171
+		FillAgentConfig(&config)
 	}
-}
 
-func defaultStringList(field *[]string, value []string) {
-	if field == nil || len(*field) == 0 {
-		*field = make([]string, len(value))
-		copy(*field, value)
+	err = ReadAgentConfig(fin, &config)
+	if err != nil {
+		return AgentConfig{}, err
 	}
+
+	return config, nil
 }
 
 func FillKeepalivedConfig(cfg *Keepalived) {
-	defaultString(&cfg.VRRPPassword, "useless")
+	cfg.Enabled = true
+	cfg.VRRPPassword = "useless"
 
-	defaultStringList(&cfg.Service.ReloadCommand, []string{"sudo", "systemctl", "reload", "keepalived"})
-	defaultStringList(&cfg.Service.StatusCommand, []string{"sudo", "systemctl", "is-active", "keepalived"})
-	defaultStringList(&cfg.Service.StartCommand, []string{"sudo", "systemctl", "start", "keepalived"})
+	cfg.Service.ReloadCommand = []string{"sudo", "systemctl", "reload", "keepalived"}
+	cfg.Service.StatusCommand = []string{"sudo", "systemctl", "is-active", "keepalived"}
+	cfg.Service.StartCommand = []string{"sudo", "systemctl", "start", "keepalived"}
 }
 
 func FillNftablesConfig(cfg *Nftables) {
 	// TODO: Add default values before parsing toml
-	defaultString(&cfg.FilterTableName, "filter")
-	defaultString(&cfg.FilterTableType, "inet")
-	defaultString(&cfg.FilterForwardChainName, "forward")
-	defaultString(&cfg.NATTableName, "nat")
-	defaultString(&cfg.NATPreroutingChainName, "prerouting")
-	defaultString(&cfg.NATPostroutingChainName, "postrouting")
-	defaultStringList(&cfg.NftCommand, []string{"sudo", "nft"})
+	cfg.FilterTableName = "filter"
+	cfg.FilterTableType = "inet"
+	cfg.FilterForwardChainName = "forward"
+	cfg.NATTableName = "nat"
+	cfg.NATPreroutingChainName = "prerouting"
+	cfg.NATPostroutingChainName = "postrouting"
+	cfg.NftCommand = []string{"sudo", "nft"}
+	cfg.EnableSNAT = true
 
 	if cfg.FWMarkBits == 0 {
 		cfg.FWMarkBits = 1
 		cfg.FWMarkMask = 1
 	}
 
-	defaultStringList(&cfg.Service.ReloadCommand, []string{"sudo", "systemctl", "reload", "nftables"})
-	defaultStringList(&cfg.Service.StartCommand, []string{"sudo", "systemctl", "restart", "nftables"})
+	cfg.Service.ReloadCommand = []string{"sudo", "systemctl", "reload", "nftables"}
+	cfg.Service.StartCommand = []string{"sudo", "systemctl", "restart", "nftables"}
 }
 
 func FillAgentConfig(cfg *AgentConfig) {
@@ -175,15 +190,9 @@ func FillAgentConfig(cfg *AgentConfig) {
 }
 
 func FillControllerConfig(cfg *ControllerConfig) {
-	defaultString(&cfg.PortManager, "openstack")
-
-	if cfg.BindPort == 0 {
-		cfg.BindPort = 15203
-	}
-
-	if cfg.BackendLayer == "" {
-		cfg.BackendLayer = BackendLayerNodePort
-	}
+	cfg.PortManager = "openstack"
+	cfg.BindPort = 15203
+	cfg.BackendLayer = BackendLayerNodePort
 }
 
 func ValidateControllerConfig(cfg *ControllerConfig) error {
