@@ -99,7 +99,6 @@ table {{ .FilterTableType }} {{ .FilterTableName }} {
 }
 
 table ip {{ .NATTableName }} {
-{{- if $cfg.EnableSNAT }}
 	chain {{ .NATPreroutingChainName }} {
 {{- range $fwd := .Forwards }}
 {{- if ne ($fwd.DestinationAddresses | len) 0 }}
@@ -109,11 +108,12 @@ table ip {{ .NATTableName }} {
 {{- end }}
 {{- end }}
 	}
-{{- end }}
 
+{{- if $cfg.EnableSNAT }}
 	chain {{ .NATPostroutingChainName }} {
 		mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} masquerade;
 	}
+{{- end }}
 }
 `))
 
