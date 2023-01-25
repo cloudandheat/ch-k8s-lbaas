@@ -38,14 +38,19 @@ var (
 	nftablesTemplate = template.Must(template.New("nftables.conf").Parse(`
 {{ $cfg := . }}
 
+{{- if $cfg.LiveReload }}
+# When live reload is enabled, flush chains.
 flush chain ip {{ .NATTableName }} {{ .NATPreroutingChainName }}
 flush chain ip {{ .NATTableName }} {{ .NATPostroutingChainName }}
 flush chain {{ .FilterTableType }} {{ .FilterTableName }} {{ .FilterForwardChainName }}
 
-# The "add chain" command is a workaround to make sure that the chain exists before deleting it.
+# Also delete all existing policy chains. 
+# To prevent an error when the chain does not exists because of $reasons, create the chain before deleting it.
+# This could be the case when the machine has been restarted and the "old" nftables config is loaded on start.
 {{- range $chain := $cfg.ExistingPolicyChains }}
 add chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
 delete chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
+{{- end }}
 {{- end }}
 
 table {{ .FilterTableType }} {{ .FilterTableName }} {
@@ -177,6 +182,7 @@ type nftablesConfig struct {
 	PolicyAssignments       []policyAssignment
 	ExistingPolicyChains    []string
 	EnableSNAT              bool
+	LiveReload              bool
 }
 
 type NftablesGenerator struct {
@@ -441,6 +447,7 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		PolicyAssignments:       []policyAssignment{},
 		ExistingPolicyChains:    []string{},
 		EnableSNAT:              g.Cfg.EnableSNAT,
+		LiveReload:              g.Cfg.LiveReload,
 	}
 
 	for _, ingress := range m.Ingress {
