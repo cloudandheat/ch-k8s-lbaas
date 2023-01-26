@@ -165,7 +165,6 @@ func FillKeepalivedConfig(cfg *Keepalived) {
 }
 
 func FillNftablesConfig(cfg *Nftables) {
-	// TODO: Add default values before parsing toml
 	cfg.FilterTableName = "filter"
 	cfg.FilterTableType = "inet"
 	cfg.FilterForwardChainName = "forward"
