@@ -279,7 +279,7 @@ func (c *PortMapperImpl) UnmapService(id model.ServiceIdentifier) error {
 	return nil
 }
 
-// SetAvailableL3Ports Mark a list of l3 ports as available.
+// SetAvailableL3Ports marks a list of l3 ports as available.
 // All other l3 ports are removed from the l3ports list.
 // All services that belong to other ports are removed from the services list and will be returned.
 func (c *PortMapperImpl) SetAvailableL3Ports(portIDs []string) ([]model.ServiceIdentifier, error) {
