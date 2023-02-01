@@ -403,7 +403,11 @@ func fetchNftablesChainList(nftCommand []string, tableType string) (result nftab
 }
 
 // filterNftablesChainListByPrefix filters a given chain list by `tableName`, `tableType` and `prefix`.
-func filterNftablesChainListByPrefix(chains nftablesChainListResult, tableName string, tableType string, prefix string) (filteredChains []string) {
+func filterNftablesChainListByPrefix(chains nftablesChainListResult, tableName string, tableType string, prefix string) (filteredChains []string, err error) {
+	if prefix == "" {
+		return filteredChains, fmt.Errorf("prefix must be set when filtering by prefix")
+	}
+
 	// Iterate over all returned chains and check if the conditions are met
 	for _, resultEntry := range chains.Nftables {
 		if resultEntry.Chain.Family == tableType &&
@@ -414,7 +418,7 @@ func filterNftablesChainListByPrefix(chains nftablesChainListResult, tableName s
 		}
 	}
 
-	return filteredChains
+	return filteredChains, nil
 }
 
 // getExistingPolicyChains returns all chain names of type `filterTableType` in table `filterTableName` that
@@ -425,7 +429,10 @@ func getExistingPolicyChains(nftCommand []string, filterTableName string, filter
 		return existingChains, err
 	}
 
-	existingChains = filterNftablesChainListByPrefix(chains, filterTableName, filterTableType, policyPrefix)
+	existingChains, err = filterNftablesChainListByPrefix(chains, filterTableName, filterTableType, policyPrefix)
+	if err != nil {
+		return existingChains, err
+	}
 
 	return existingChains, nil
 }

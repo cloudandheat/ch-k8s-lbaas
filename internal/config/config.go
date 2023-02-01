@@ -249,6 +249,12 @@ func ValidateAgentConfig(cfg *AgentConfig) error {
 		return fmt.Errorf("nftables.service.config-file must be set")
 	}
 
+	if cfg.Nftables.LiveReload {
+		if cfg.Nftables.PolicyPrefix == "" {
+			return fmt.Errorf("nftables.policy-prefix must be set if live-reload is enabled")
+		}
+	}
+
 	if cfg.SharedSecret == "" {
 		return fmt.Errorf("shared-secret must be set")
 	}

@@ -321,7 +321,12 @@ func TestFilterNftablesChainListByPrefix(t *testing.T) {
 		},
 	}
 
-	filteredChains := filterNftablesChainListByPrefix(chains, "filter", "ip", "Prefix-")
+	// Expect error if given prefix is empty
+	filteredChains, err := filterNftablesChainListByPrefix(chains, "filter", "ip", "")
+	assert.NotNil(t, err)
+
+	filteredChains, err = filterNftablesChainListByPrefix(chains, "filter", "ip", "Prefix-")
+	assert.Nil(t, err)
 
 	assert.Equal(t, []string{"Prefix-TestChain1"}, filteredChains)
 }
