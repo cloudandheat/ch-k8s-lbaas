@@ -221,7 +221,7 @@ func TestFillControllerConfig(t *testing.T) {
 	cfg := ControllerConfig{}
 	FillControllerConfig(&cfg)
 
-	assert.Equal(t, "openstack", cfg.PortManager)
+	assert.Equal(t, PortManagerOpenstack, cfg.PortManager)
 	assert.Equal(t, BackendLayerNodePort, cfg.BackendLayer)
 	assert.Equal(t, int32(15203), cfg.BindPort)
 }

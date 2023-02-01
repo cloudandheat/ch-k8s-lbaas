@@ -33,6 +33,13 @@ const (
 	BackendLayerPod       BackendLayer = "Pod"
 )
 
+type PortManager string
+
+const (
+	PortManagerOpenstack PortManager = "openstack"
+	PortManagerStatic    PortManager = "static"
+)
+
 type Agent struct {
 	URL string `toml:"url"`
 }
@@ -83,13 +90,14 @@ type Agents struct {
 
 type ControllerConfig struct {
 	BindAddress string `toml:"bind-address"`
-	PortManager string `toml:"port-manager"` // "openstack" or "static"
 	BindPort    int32  `toml:"bind-port"`
 
-	OpenStack    openstack.Config `toml:"openstack"`
-	Static       static.Config    `toml:"static"`
-	Agents       Agents           `toml:"agents"`
-	BackendLayer BackendLayer     `toml:"backend-layer"`
+	PortManager  PortManager  `toml:"port-manager"`
+	BackendLayer BackendLayer `toml:"backend-layer"`
+
+	OpenStack openstack.Config `toml:"openstack"`
+	Static    static.Config    `toml:"static"`
+	Agents    Agents           `toml:"agents"`
 }
 
 type AgentConfig struct {
@@ -189,7 +197,7 @@ func FillAgentConfig(cfg *AgentConfig) {
 }
 
 func FillControllerConfig(cfg *ControllerConfig) {
-	cfg.PortManager = "openstack"
+	cfg.PortManager = PortManagerOpenstack
 	cfg.BindPort = 15203
 	cfg.BackendLayer = BackendLayerNodePort
 }
@@ -206,9 +214,9 @@ func ValidateControllerConfig(cfg *ControllerConfig) error {
 		return fmt.Errorf("backend-layer has an invalid value: %q", cfg.BackendLayer)
 	}
 
-	if cfg.PortManager == "openstack" {
+	if cfg.PortManager == PortManagerOpenstack {
 		// TODO: Add openstack config validation.
-	} else if cfg.PortManager == "static" {
+	} else if cfg.PortManager == PortManagerStatic {
 		if len(cfg.Static.IPv4Addresses) == 0 {
 			return fmt.Errorf("static.ipv4-addresses must have at least one " +
 				"entry if static port manager is used")

@@ -78,7 +78,7 @@ func main() {
 
 	var l3portmanager controller.L3PortManager
 
-	if fileCfg.PortManager == "openstack" {
+	if fileCfg.PortManager == config.PortManagerOpenstack {
 		osClient, err := openstack.NewClient(&fileCfg.OpenStack.Global)
 		if err != nil {
 			klog.Fatalf("Failed to connect to OpenStack: %s", err.Error())
@@ -90,7 +90,7 @@ func main() {
 		if err != nil {
 			klog.Fatalf("Failed to create openstack L3 port manager: %s", err.Error())
 		}
-	} else if fileCfg.PortManager == "static" {
+	} else if fileCfg.PortManager == config.PortManagerStatic {
 		l3portmanager, err = static.NewStaticL3PortManager(&fileCfg.Static)
 		if err != nil {
 			klog.Fatalf("Failed to create static L3 port manager: %s", err.Error())
