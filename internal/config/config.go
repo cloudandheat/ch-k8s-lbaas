@@ -186,6 +186,7 @@ func FillNftablesConfig(cfg *Nftables) {
 	cfg.FWMarkMask = 1
 
 	cfg.Service.ReloadCommand = []string{"sudo", "systemctl", "reload", "nftables"}
+	cfg.Service.StatusCommand = []string{"sudo", "systemctl", "is-active", "nftables"}
 	cfg.Service.StartCommand = []string{"sudo", "systemctl", "restart", "nftables"}
 }
 
