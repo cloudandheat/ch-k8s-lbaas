@@ -46,7 +46,8 @@ flush chain {{ .FilterTableType }} {{ .FilterTableName }} {{ .FilterForwardChain
 
 # Also delete all existing policy chains. 
 # To prevent an error when the chain does not exists because of $reasons, create the chain before deleting it.
-# This could be the case when the machine has been restarted and the "old" nftables config is loaded on start.
+# This could be the case when the machine has been restarted (and therefore has "clean" nftables) and the last generated 
+# lbaas nftables config is applied on start of the agent.
 {{- range $chain := $cfg.ExistingPolicyChains }}
 add chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
 delete chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
