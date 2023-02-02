@@ -168,15 +168,9 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 			return err
 		}
 
-		if !exists {
-			klog.Warningf(
-				"relocating service %q because it has an invalid port %s",
-				key,
-				portID)
-			portID = ""
-		} else {
-			l3port, exists := c.l3ports[portID]
-			if exists {
+		if exists {
+			l3port, known := c.l3ports[portID]
+			if known {
 				// the port is already known and thus may have allocations. we have
 				// to check if any allocations conflict
 				if !c.isPortSuitableFor(l3port, svcModel.Ports, key) {
@@ -190,8 +184,16 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 					portID = ""
 				}
 			} else {
+				// the port is not known yet, emplace an empty l3 port with the given ID
 				c.emplaceL3Port(portID)
 			}
+		} else {
+			// the port does not exist in the backend, we need to relocate the service
+			klog.Warningf(
+				"relocating service %q because it has an invalid port %s",
+				key,
+				portID)
+			portID = ""
 		}
 	}
 
