@@ -74,8 +74,8 @@ func main() {
 		}
 	}
 
-	// If LiveReload is enabled, reload nftables config directly after start to apply last state
-	if fileCfg.Nftables.LiveReload {
+	// If PartialReload is enabled, reload nftables config directly after start to apply last state
+	if fileCfg.Nftables.PartialReload {
 		nftablesConfig.Reload()
 	}
 

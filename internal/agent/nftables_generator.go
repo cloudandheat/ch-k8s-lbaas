@@ -38,8 +38,8 @@ var (
 	nftablesTemplate = template.Must(template.New("nftables.conf").Parse(`
 {{ $cfg := . }}
 
-{{- if $cfg.LiveReload }}
-# When live reload is enabled, flush chains.
+{{- if $cfg.PartialReload }}
+# When partial reload is enabled, flush chains.
 flush chain ip {{ .NATTableName }} {{ .NATPreroutingChainName }}
 flush chain ip {{ .NATTableName }} {{ .NATPostroutingChainName }}
 flush chain {{ .FilterTableType }} {{ .FilterTableName }} {{ .FilterForwardChainName }}
@@ -182,7 +182,7 @@ type nftablesConfig struct {
 	PolicyAssignments       []policyAssignment
 	ExistingPolicyChains    []string
 	EnableSNAT              bool
-	LiveReload              bool
+	PartialReload           bool
 }
 
 type NftablesGenerator struct {
@@ -454,7 +454,7 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		PolicyAssignments:       []policyAssignment{},
 		ExistingPolicyChains:    []string{},
 		EnableSNAT:              g.Cfg.EnableSNAT,
-		LiveReload:              g.Cfg.LiveReload,
+		PartialReload:           g.Cfg.PartialReload,
 	}
 
 	for _, ingress := range m.Ingress {
@@ -500,8 +500,8 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		result.NetworkPolicies[policy.Name] = policy
 	}
 
-	if g.Cfg.LiveReload {
-		// When live reload is enabled, get all existing policy chain names to delete them in the template
+	if g.Cfg.PartialReload {
+		// When partial reload is enabled, get all existing policy chain names to delete them in the template
 		result.ExistingPolicyChains, err = getExistingPolicyChains(
 			g.Cfg.NftCommand,
 			g.Cfg.FilterTableName,

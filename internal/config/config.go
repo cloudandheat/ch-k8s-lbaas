@@ -74,7 +74,7 @@ type Nftables struct {
 	NATPostroutingChainName string   `toml:"nat-postrouting-chain"`
 	PolicyPrefix            string   `toml:"policy-prefix"`
 	NftCommand              []string `toml:"nft-command"`
-	LiveReload              bool     `toml:"live-reload"`
+	PartialReload           bool     `toml:"partial-reload"`
 	EnableSNAT              bool     `toml:"enable-snat"`
 	FWMarkBits              uint32   `toml:"fwmark-bits"`
 	FWMarkMask              uint32   `toml:"fwmark-mask"`
@@ -257,9 +257,9 @@ func ValidateAgentConfig(cfg *AgentConfig) error {
 		return fmt.Errorf("nftables.service.config-file must be set")
 	}
 
-	if cfg.Nftables.LiveReload {
+	if cfg.Nftables.PartialReload {
 		if cfg.Nftables.PolicyPrefix == "" {
-			return fmt.Errorf("nftables.policy-prefix must be set if live-reload is enabled")
+			return fmt.Errorf("nftables.policy-prefix must be set if partial-reload is enabled")
 		}
 	}
 

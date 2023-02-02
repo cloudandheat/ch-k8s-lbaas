@@ -90,7 +90,7 @@ nat-prerouting-chain="prerouting"
 nat-postrouting-chain="postrouting"
 
 policy-prefix="lbaas-"
-live-reload=true
+partial-reload=true
 nft-command=["sudo", "nft"]
 
 [nftables.service]
@@ -171,7 +171,7 @@ func TestCanReadAgentConfig(t *testing.T) {
 	assert.Equal(t, "prerouting", nftc.NATPreroutingChainName)
 	assert.Equal(t, "lbaas-", nftc.PolicyPrefix)
 	assert.Equal(t, []string{"sudo", "nft"}, nftc.NftCommand)
-	assert.Equal(t, true, nftc.LiveReload)
+	assert.Equal(t, true, nftc.PartialReload)
 	assert.Equal(t, false, nftc.EnableSNAT)
 }
 
@@ -198,7 +198,7 @@ func TestFillAgentConfig(t *testing.T) {
 	assert.Equal(t, "prerouting", nftc.NATPreroutingChainName)
 	assert.Equal(t, "", nftc.PolicyPrefix)
 	assert.Equal(t, []string{"sudo", "nft"}, nftc.NftCommand)
-	assert.Equal(t, false, nftc.LiveReload)
+	assert.Equal(t, false, nftc.PartialReload)
 	assert.Equal(t, true, nftc.EnableSNAT)
 }
 
