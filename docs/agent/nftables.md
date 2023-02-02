@@ -68,7 +68,7 @@ The entrypoint for all our rules is `filter-forward-chain`. In this chain we add
     The contents of the policy are enforced in the chain with the name `POD-10.x.x.1`, that is also being created,
     together with some further (sub-)chains.
 
-2. A "catch-all" rule for all other packet flows that do not have a network-policy:
+2. A "catch-all" accept rule for all other packet flows that do not have a network-policy:
 
    `ct mark 0x00000001 accept`
 
