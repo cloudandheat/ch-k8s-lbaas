@@ -182,10 +182,8 @@ func FillNftablesConfig(cfg *Nftables) {
 	cfg.NftCommand = []string{"sudo", "nft"}
 	cfg.EnableSNAT = true
 
-	if cfg.FWMarkBits == 0 {
-		cfg.FWMarkBits = 1
-		cfg.FWMarkMask = 1
-	}
+	cfg.FWMarkBits = 1
+	cfg.FWMarkMask = 1
 
 	cfg.Service.ReloadCommand = []string{"sudo", "systemctl", "reload", "nftables"}
 	cfg.Service.StartCommand = []string{"sudo", "systemctl", "restart", "nftables"}
