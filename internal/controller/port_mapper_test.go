@@ -37,9 +37,11 @@ func newPortMapperFixture() *portMapperFixture {
 
 	l3portmanager.On("GetAvailablePorts").Return([]string{}, nil).Times(1)
 
+	portmapper, _ := NewPortMapper(l3portmanager)
+
 	return &portMapperFixture{
 		l3portmanager: l3portmanager,
-		portmapper:    NewPortMapper(l3portmanager),
+		portmapper:    portmapper,
 	}
 }
 
@@ -56,6 +58,16 @@ func newPortMapperService(name string) *corev1.Service {
 		},
 	}
 	return svc
+}
+
+func TestNewPortMapperWithError(t *testing.T) {
+	l3portmanager := ostesting.NewMockL3PortManager()
+
+	l3portmanager.On("GetAvailablePorts").Return([]string{}, fmt.Errorf("test error")).Times(1)
+
+	_, err := NewPortMapper(l3portmanager)
+
+	assert.NotNil(t, err)
 }
 
 func TestGetServiceL3PortReturnsErrorForNonexistingService(t *testing.T) {

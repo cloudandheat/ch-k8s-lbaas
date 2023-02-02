@@ -97,7 +97,11 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
-	portmapper := NewPortMapper(l3portmanager)
+	portmapper, err := NewPortMapper(l3portmanager)
+	if err != nil {
+		return nil, err
+	}
+
 	prometheus.DefaultRegisterer.MustRegister(
 		NewCollector(portmapper),
 	)
