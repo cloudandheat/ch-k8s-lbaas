@@ -1,6 +1,6 @@
-# Live Reload
+# Partial Reload
 
-The nftables live-reload feature can be used if there is no `nftables` service or similar that can just be reloaded.
+The partial-reload feature for nftables can be used if there is no `nftables` service or similar that can just be reloaded.
 
 When the option is enabled, the behaviour of the agent changes as follows:
 
@@ -30,7 +30,7 @@ filter-forward-chain="VYATTA_PRE_FW_IN_HOOK"
 nat-table-name="nat"
 nat-prerouting-chain="VYATTA_PRE_DNAT_HOOK"
 nat-postrouting-chain="VYATTA_PRE_SNAT_HOOK"
-live-reload=true
+partial-reload=true
 policy-prefix="lbaas-"
 nft-command=["sudo","nft"]
 enable-snat=true
