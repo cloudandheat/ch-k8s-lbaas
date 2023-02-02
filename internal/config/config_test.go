@@ -29,7 +29,7 @@ bind-port = 1234
 backend-layer = "Pod"
 
 [static]
-ipv4-addresses=["111.111.111.111"]
+ipv4-addresses=["203.0.113.113"]
 
 [openstack.auth]
 auth-url="http://foo"
@@ -132,7 +132,7 @@ func TestCanReadControllerConfig(t *testing.T) {
 	assert.Equal(t, "456def", osn.SubnetID)
 
 	// check static options
-	addr, err := netip.ParseAddr("111.111.111.111")
+	addr, err := netip.ParseAddr("203.0.113.113")
 	assert.Equal(t, []netip.Addr{addr}, cfg.Static.IPv4Addresses)
 
 	// agent config
