@@ -1,6 +1,6 @@
 # Port Manager
 
-The port manager is responsible for managing the load-balancer IP-addresses (also called L3-port). 
+The port manager is responsible for managing the load-balancer IP-addresses (also called L3-ports). 
 
 ## Tasks
 
