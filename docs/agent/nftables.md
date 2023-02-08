@@ -21,7 +21,7 @@ As shown in the image above, the example service should be available on it's loa
 The load-balancer with nftables changes the destination of the packet to one of the available endpoints using the
 round-robin method. The new destination address is `10.x.x.2` with port `8080`.
 
-This is archived by adding the following nftables rules in the `nat-prerouting-chain`:
+This is achieved by adding the following nftables rules in the `nat-prerouting-chain`:
 
 ```
 ip daddr 3.x.x.1 tcp dport 80 meta mark set 0x00000001 ct mark set meta mark dnat to numgen inc mod 2 map { 0 : 10.x.x.1, 1 : 10.x.x.2 }:80
