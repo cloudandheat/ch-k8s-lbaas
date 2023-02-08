@@ -12,34 +12,5 @@ When the option is enabled, the behaviour of the agent changes as follows:
 These changes allow lbaas to run in an environment where it isn't possible to reload the complete nftables ruleset.
 In this case, the changes can be applied with `nft -f`.
 
-## Example Config
-
-### VyOS 1.3
-
-```toml
-bind-address="0.0.0.0"
-bind-port=15203
-
-[keepalived]
-enabled=false
-
-[nftables]
-filter-table-name="filter"
-filter-table-type="ip"
-filter-forward-chain="VYATTA_PRE_FW_IN_HOOK"
-nat-table-name="nat"
-nat-prerouting-chain="VYATTA_PRE_DNAT_HOOK"
-nat-postrouting-chain="VYATTA_PRE_SNAT_HOOK"
-partial-reload=true
-policy-prefix="lbaas-"
-nft-command=["sudo","nft"]
-enable-snat=true
-
-[nftables.service]
-config-file="/var/lib/ch-k8s-lbaas-agent/nftables/lbaas.conf"
-reload-command=["sudo", "nft", "-f", "/var/lib/ch-k8s-lbaas-agent/nftables/lbaas.conf"]
-status-command=["true"]
-start-command=["sudo", "nft", "-f", "/var/lib/ch-k8s-lbaas-agent/nftables/lbaas.conf"]
-```
-
-__Warning:__ With VyOS 1.4, the names of the nftables hook changed.
+## Example config
+An example configuration for partial-reload usage on VyOS can be found [here](environments/vyos.md).

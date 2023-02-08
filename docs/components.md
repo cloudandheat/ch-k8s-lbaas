@@ -6,7 +6,7 @@ LbaaS consists of two parts: The agent and the controller.
 
 > Maximum of one active controller at a time
 
-- K8s client
+- [Kubernetes client](controller/k8s_client.md)
     - Watching for changes to services, nodes, endpoints, network policies
     - Mapping new services of type `LoadBalancer`
 - May run in k8s cluster or on gateway nodes (in cluster is easier!)
@@ -17,5 +17,5 @@ LbaaS consists of two parts: The agent and the controller.
 
 > One agent on every gateway/load-balancer node
 
-- HTTP endpoint for controller
-- Generates nftables and keepalived config and applies the changes
+- [HTTP endpoint](agent/api.md) for controller
+- Generates [nftables](agent/nftables.md) and [keepalived](agent/keepalived.md) config and applies the changes
