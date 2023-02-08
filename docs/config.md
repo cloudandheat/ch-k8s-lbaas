@@ -4,42 +4,42 @@ Options with a `-` as default value are mandatory.
 
 ## Agent
 
-| Name          | Type                             | Default | Description                                  |
-|---------------|----------------------------------|---------|----------------------------------------------|
-| shared-secret | string                           | -       | Secret that is shared with the controller(s) |
-| bind-address  | string                           | -       | Bind IP address                              |
-| bind-port     | int                              | -       | Bind TCP port                                |
-| keepalived    | [Keepalived](#agent--keepalived) | ...     | Keepalived configuration                     |
-| nftables      | [Nftables](#agent--nftables)     | ...     | Nftables configuration                       |
+| Name          | Type                            | Default | Description                                  |
+|---------------|---------------------------------|---------|----------------------------------------------|
+| shared-secret | string                          | -       | Secret that is shared with the controller(s) |
+| bind-address  | string                          | -       | Bind IP address                              |
+| bind-port     | int                             | -       | Bind TCP port                                |
+| keepalived    | [Keepalived](#agent-keepalived) | ...     | Keepalived configuration                     |
+| nftables      | [Nftables](#agent-nftables)     | ...     | Nftables configuration                       |
 
 ### Agent: Keepalived
 
-| Name                   | Type                                   | Default   | Description                                                     |
-|------------------------|----------------------------------------|-----------|-----------------------------------------------------------------|
-| enabled                | bool                                   | true      | Enable keepalived config update                                 |
-| vrrp-password          | string                                 | "useless" | The VRRP password that is used, should be the same on all nodes |
-| priority               | int                                    | 0         | The VRRP priority of the node                                   |
-| virtual-router-id-base | int                                    | -         | Virtual Router ID base                                          |
-| interface              | string                                 | -         | Network interface used for VRRP                                 |
-| service                | [ServiceConfig](#agent--serviceconfig) | ...       | Keepalived service configuration                                |
+| Name                   | Type                                  | Default   | Description                                                     |
+|------------------------|---------------------------------------|-----------|-----------------------------------------------------------------|
+| enabled                | bool                                  | true      | Enable keepalived config update                                 |
+| vrrp-password          | string                                | "useless" | The VRRP password that is used, should be the same on all nodes |
+| priority               | int                                   | 0         | The VRRP priority of the node                                   |
+| virtual-router-id-base | int                                   | -         | Virtual Router ID base                                          |
+| interface              | string                                | -         | Network interface used for VRRP                                 |
+| service                | [ServiceConfig](#agent-serviceconfig) | ...       | Keepalived service configuration                                |
 
 ### Agent: Nftables
 
-| Name                  | Type                                   | Default         | Description                                                                                                                                                                                                                |
-|-----------------------|----------------------------------------|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| filter-table-name     | string                                 | "filter"        | Name of the nftables table for filtering rules                                                                                                                                                                             |
-| filter-table-type     | string                                 | "inet"          | Type of the nftables table for filtering rules                                                                                                                                                                             |
-| filter-forward-chain  | string                                 | "forward"       | Name of the nftables chain for filtering rules in the specified table                                                                                                                                                      |
-| nat-table-name        | string                                 | "nat"           | Name of the nftables table for NAT                                                                                                                                                                                         |
-| nat-prerouting-chain  | string                                 | "prerouting"    | Name of the nftables prerouting chain for NAT                                                                                                                                                                              |
-| nat-postrouting-chain | string                                 | "postrouting"   | Name of the nftables postrouting chain for NAT                                                                                                                                                                             |
-| policy-prefix         | string                                 | ""              | Prefix for nftables chains created for k8s network policies; When partial-reload is enabled, all chains beginning with this prefix will be deleted on nftables config reload                                               |
-| nft-command           | string list                            | ["sudo", "nft"] | Command to run `nft`; Required for partial-reload                                                                                                                                                                          |
-| partial-reload        | bool                                   | false           | If partial-reload should be enabled; See [Partial Reload](agent/partial_reload.md); Causes lbaas-agent to load the last config on startup and include nft-commands to delete removed policy-chains in the generated config |
-| enable-snat           | bool                                   | true            | If SNAT should be enabled; Can be false if the load-balancer is also default gateway for the k8s nodes                                                                                                                     |
-| fwmark-bits           | uint                                   | 1               | Mark that is used to mark load-balanced nftable/conntrack flows in the form: `mark 0x<FWMarkBits> and 0x<FWMarkMask>`                                                                                                      |
-| fwmark-mask           | uint                                   | 1               | See `FWMarkBits`                                                                                                                                                                                                           |
-| service               | [ServiceConfig](#agent--serviceconfig) | ...             | Nftables service configuration                                                                                                                                                                                             |
+| Name                  | Type                                  | Default         | Description                                                                                                                                                                                                                |
+|-----------------------|---------------------------------------|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| filter-table-name     | string                                | "filter"        | Name of the nftables table for filtering rules                                                                                                                                                                             |
+| filter-table-type     | string                                | "inet"          | Type of the nftables table for filtering rules                                                                                                                                                                             |
+| filter-forward-chain  | string                                | "forward"       | Name of the nftables chain for filtering rules in the specified table                                                                                                                                                      |
+| nat-table-name        | string                                | "nat"           | Name of the nftables table for NAT                                                                                                                                                                                         |
+| nat-prerouting-chain  | string                                | "prerouting"    | Name of the nftables prerouting chain for NAT                                                                                                                                                                              |
+| nat-postrouting-chain | string                                | "postrouting"   | Name of the nftables postrouting chain for NAT                                                                                                                                                                             |
+| policy-prefix         | string                                | ""              | Prefix for nftables chains created for k8s network policies; When partial-reload is enabled, all chains beginning with this prefix will be deleted on nftables config reload                                               |
+| nft-command           | string list                           | ["sudo", "nft"] | Command to run `nft`; Required for partial-reload                                                                                                                                                                          |
+| partial-reload        | bool                                  | false           | If partial-reload should be enabled; See [Partial Reload](agent/partial_reload.md); Causes lbaas-agent to load the last config on startup and include nft-commands to delete removed policy-chains in the generated config |
+| enable-snat           | bool                                  | true            | If SNAT should be enabled; Can be false if the load-balancer is also default gateway for the k8s nodes                                                                                                                     |
+| fwmark-bits           | uint                                  | 1               | Mark that is used to mark load-balanced nftable/conntrack flows in the form: `mark 0x<FWMarkBits> and 0x<FWMarkMask>`                                                                                                      |
+| fwmark-mask           | uint                                  | 1               | See `FWMarkBits`                                                                                                                                                                                                           |
+| service               | [ServiceConfig](#agent-serviceconfig) | ...             | Nftables service configuration                                                                                                                                                                                             |
 
 ### Agent: ServiceConfig
 
@@ -53,22 +53,22 @@ Options with a `-` as default value are mandatory.
 
 ## Controller
 
-| Name          | Type                                | Default     | Description                                   |
-|---------------|-------------------------------------|-------------|-----------------------------------------------|
-| bind-address  | string                              | -           | Bind IP address                               |
-| bind-port     | int                                 | 15203       | Bind TCP port                                 |
-| port-manager  | string                              | "openstack" | Port manager to use ("openstack" or "static") |
-| backend-layer | string                              | "NodePort"  | Backend layer to use                          |
-| openstack     | [OpenStack](#controller--openstack) | ...         | OpenStack port manager configuration          |
-| static        | [Static](#controller--static)       | ...         | Static port manager configuration             |
-| agents        | [Agents](#controller--agents)       | ...         | Agents configuration                          |
+| Name          | Type                               | Default     | Description                                   |
+|---------------|------------------------------------|-------------|-----------------------------------------------|
+| bind-address  | string                             | -           | Bind IP address                               |
+| bind-port     | int                                | 15203       | Bind TCP port                                 |
+| port-manager  | string                             | "openstack" | Port manager to use ("openstack" or "static") |
+| backend-layer | string                             | "NodePort"  | Backend layer to use                          |
+| openstack     | [OpenStack](#controller-openstack) | ...         | OpenStack port manager configuration          |
+| static        | [Static](#controller-static)       | ...         | Static port manager configuration             |
+| agents        | [Agents](#controller-agents)       | ...         | Agents configuration                          |
 
 ### Controller: OpenStack
 
-| Name    | Type                                       | Default | Description           |
-|---------|--------------------------------------------|---------|-----------------------|
-| auth    | [Auth](#controller--openstack--auth)       | ...     | Auth configuration    |
-| network | [Network](#controller--openstack--network) | ...     | Network configuration |
+| Name    | Type                                     | Default | Description           |
+|---------|------------------------------------------|---------|-----------------------|
+| auth    | [Auth](#controller-openstack-auth)       | ...     | Auth configuration    |
+| network | [Network](#controller-openstack-network) | ...     | Network configuration |
 
 ### Controller: OpenStack: Auth
 
@@ -110,11 +110,11 @@ Options with a `-` as default value are mandatory.
 
 ### Controller: Agents
 
-| Name           | Type                           | Default | Description                            |
-|----------------|--------------------------------|---------|----------------------------------------|
-| shared-secret  | string                         | -       | Shared secret with the agents          |
-| token-lifetime | int                            | 15      | Lifetime in seconds of the created JWT |
-| agents         | [Agent](#ControllerAgent) list | -       | List of agents                         |
+| Name           | Type                                   | Default | Description                            |
+|----------------|----------------------------------------|---------|----------------------------------------|
+| shared-secret  | string                                 | -       | Shared secret with the agents          |
+| token-lifetime | int                                    | 15      | Lifetime in seconds of the created JWT |
+| agents         | [Agent](#controller-agents-agent) list | -       | List of agents                         |
 
 ### Controller: Agents: Agent
 
