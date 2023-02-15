@@ -10,11 +10,19 @@ Alternatively to the steps below, LBaaS can be deployed as part of [yaook-k8s](h
   kubernetes cluster
 
 ## Setting up the agent
-### Building the agent
+### Getting the agent
+#### Download from release
+A built version of the agent can be found in the [newest GitHub release](https://github.com/cloudandheat/ch-k8s-lbaas/releases).
+
+#### Building from source
 
 1. Clone the repository
 2. Run `m̀ake`
-3. Copy `ch-k8s-lbaas-agent` binary to your load-balancer node
+
+
+### Installing the agent
+
+1. Copy `ch-k8s-lbaas-agent` to your load-balancer node
 
 ### Running the agent
 
