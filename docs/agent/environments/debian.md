@@ -6,7 +6,8 @@ This page describes the requirements for running the LBaaS-agent on a Debian hos
 
 - nftables and keepalived installed
 - Network interface where load-balancer IP-addresses will be configured by keepalived
-- L3-connection to the k8s-cluster 
+- L3-connection to the k8s-cluster
+    - For example by establishing BGP peerings with the kubernetes nodes
 
 ### Prepare nftables config
 
