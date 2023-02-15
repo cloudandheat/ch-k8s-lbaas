@@ -40,7 +40,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 const controllerAgentName = "cah-loadbalancer-controller"
@@ -84,7 +83,7 @@ func NewController(
 	nodeInformer coreinformers.NodeInformer,
 	endpointsInformer coreinformers.EndpointsInformer,
 	networkPoliciesInformer networkinginformers.NetworkPolicyInformer,
-	l3portmanager openstack.L3PortManager,
+	l3portmanager L3PortManager,
 	agentController AgentController,
 	generator LoadBalancerModelGenerator,
 ) (*Controller, error) {
@@ -98,7 +97,11 @@ func NewController(
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
 
-	portmapper := NewPortMapper(l3portmanager)
+	portmapper, err := NewPortMapper(l3portmanager)
+	if err != nil {
+		return nil, err
+	}
+
 	prometheus.DefaultRegisterer.MustRegister(
 		NewCollector(portmapper),
 	)

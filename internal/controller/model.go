@@ -22,7 +22,6 @@ import (
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 type LoadBalancerModelGenerator interface {
@@ -31,7 +30,7 @@ type LoadBalancerModelGenerator interface {
 
 func NewLoadBalancerModelGenerator(
 	backendLayer config.BackendLayer,
-	l3portmanager openstack.L3PortManager,
+	l3portmanager L3PortManager,
 	services corelisters.ServiceLister,
 	nodes corelisters.NodeLister,
 	endpoints corelisters.EndpointsLister,

@@ -284,3 +284,49 @@ func TestNftablesStructuredConfigSortsAddresses(t *testing.T) {
 	assert.Equal(t, m.Ingress[1].Ports[0].DestinationPort, fwd.DestinationPort)
 	assert.Equal(t, m.Ingress[1].Ports[0].DestinationAddresses, fwd.DestinationAddresses)
 }
+
+func TestFilterNftablesChainListByPrefix(t *testing.T) {
+	chainResultEntry1 := nftablesChainListResultEntry{ // Correct
+		Chain: nftablesChainListResultChain{
+			Family: "ip",
+			Table:  "filter",
+			Name:   "Prefix-TestChain1",
+		},
+	}
+	chainResultEntry2 := nftablesChainListResultEntry{ // Wrong family
+		Chain: nftablesChainListResultChain{
+			Family: "inet",
+			Table:  "filter",
+			Name:   "Prefix-TestChain2",
+		},
+	}
+	chainResultEntry3 := nftablesChainListResultEntry{ // Wrong prefix
+		Chain: nftablesChainListResultChain{
+			Family: "ip",
+			Table:  "filter",
+			Name:   "WrongPrefix-TestChain3",
+		},
+	}
+	chainResultEntry4 := nftablesChainListResultEntry{ // Wrong table
+		Chain: nftablesChainListResultChain{
+			Family: "ip",
+			Table:  "nat",
+			Name:   "Prefix-TestChain4",
+		},
+	}
+
+	chains := nftablesChainListResult{
+		Nftables: []nftablesChainListResultEntry{
+			chainResultEntry1, chainResultEntry2, chainResultEntry3, chainResultEntry4,
+		},
+	}
+
+	// Expect error if given prefix is empty
+	filteredChains, err := filterNftablesChainListByPrefix(chains, "filter", "ip", "")
+	assert.NotNil(t, err)
+
+	filteredChains, err = filterNftablesChainListByPrefix(chains, "filter", "ip", "Prefix-")
+	assert.Nil(t, err)
+
+	assert.Equal(t, []string{"Prefix-TestChain1"}, filteredChains)
+}

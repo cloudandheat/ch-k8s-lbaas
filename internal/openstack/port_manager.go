@@ -16,14 +16,12 @@ package openstack
 
 import (
 	"errors"
-
 	"github.com/gophercloud/gophercloud"
 	tags "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
 	floatingipsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
 	portsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
 	subnetsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/subnets"
 	"github.com/gophercloud/gophercloud/pagination"
-
 	"k8s.io/klog"
 )
 
@@ -60,14 +58,6 @@ type CustomCreateOpts struct {
 
 func (opts CustomCreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
 	return gophercloud.BuildRequestBody(opts, "port")
-}
-
-type L3PortManager interface {
-	ProvisionPort() (string, error)
-	CleanUnusedPorts(usedPorts []string) error
-	GetAvailablePorts() ([]string, error)
-	GetExternalAddress(portID string) (string, string, error)
-	GetInternalAddress(portID string) (string, error)
 }
 
 type OpenStackL3PortManager struct {
@@ -140,6 +130,22 @@ func (pm *OpenStackL3PortManager) provisionFloatingIP(portID string) error {
 
 func boolPtr(v bool) *bool {
 	return &v
+}
+
+// CheckPortExists tries to fetch the port with the given ID and return true if it was successful.
+// Returns false if a 404 was returned.
+func (pm *OpenStackL3PortManager) CheckPortExists(portID string) (bool, error) {
+	_, _, err := pm.ports.GetPortByID(portID)
+	if err != nil {
+		_, notFound := err.(gophercloud.ErrDefault404)
+		if notFound {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (pm *OpenStackL3PortManager) ProvisionPort() (string, error) {

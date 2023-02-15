@@ -15,13 +15,18 @@
 package agent
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"text/template"
+
+	"k8s.io/klog"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -32,19 +37,36 @@ import (
 var (
 	nftablesTemplate = template.Must(template.New("nftables.conf").Parse(`
 {{ $cfg := . }}
+
+{{- if $cfg.PartialReload }}
+# When partial reload is enabled, flush chains.
+flush chain ip {{ .NATTableName }} {{ .NATPreroutingChainName }}
+flush chain ip {{ .NATTableName }} {{ .NATPostroutingChainName }}
+flush chain {{ .FilterTableType }} {{ .FilterTableName }} {{ .FilterForwardChainName }}
+
+# Also delete all existing policy chains. 
+# To prevent an error when the chain does not exists because of $reasons, create the chain before deleting it.
+# This could be the case when the machine has been restarted (and therefore has "clean" nftables) and the last generated 
+# lbaas nftables config is applied on start of the agent.
+{{- range $chain := $cfg.ExistingPolicyChains }}
+add chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
+delete chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
+{{- end }}
+{{- end }}
+
 table {{ .FilterTableType }} {{ .FilterTableName }} {
 	chain {{ .FilterForwardChainName }} {
 		{{- range $dest := $cfg.PolicyAssignments }}
-		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ip daddr {{ $dest.Address }} goto POD-{{ $dest.Address }};
+		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ip daddr {{ $dest.Address }} goto {{ $cfg.PolicyPrefix }}POD-{{ $dest.Address }};
 		{{- end }}
 		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} accept;
 	}
 
 	# Using uppercase POD to prevent collisions with policy names like 'pod-x.x.x.x'
 	{{- range $pod := $cfg.PolicyAssignments }}
-	chain POD-{{ $pod.Address }} {
+	chain {{ $cfg.PolicyPrefix }}POD-{{ $pod.Address }} {
 		{{- range $pol := $pod.NetworkPolicies }}
-		jump {{ $pol }};
+		jump {{ $cfg.PolicyPrefix }}{{ $pol }};
 		{{- end }}
 		drop;
 	}
@@ -52,23 +74,23 @@ table {{ .FilterTableType }} {{ .FilterTableName }} {
 
 	# Using uppercase RULE and CIDR to prevent collisions with policy names like 'x-rule-y-cidr-z'
 	{{- range $policy := $cfg.NetworkPolicies }}
-	chain {{ $policy.Name }} {
+	chain {{ $cfg.PolicyPrefix }}{{ $policy.Name }} {
 		{{- range $ruleIndex, $ingressRule := $policy.IngressRuleChains }}
-		jump {{ $policy.Name }}-RULE{{ $ruleIndex }};
+		jump {{ $cfg.PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }};
 		{{- end }}
 	}
 
 	{{- range $ruleIndex, $ingressRule := $policy.IngressRuleChains }}
-	chain {{ $policy.Name }}-RULE{{ $ruleIndex }} {
+	chain {{ $cfg.PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }} {
 		{{- range $entryIndex, $entry := $ingressRule.Entries }}
-		{{ $entry.SaddrMatch.Match }} {{ $entry.PortMatch }} {{- if ne ($entry.SaddrMatch.Except | len) 0 }} jump {{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {{- else }} accept {{- end }};
+		{{ $entry.SaddrMatch.Match }} {{ $entry.PortMatch }} {{- if ne ($entry.SaddrMatch.Except | len) 0 }} jump {{ $cfg.PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {{- else }} accept {{- end }};
 
 		{{- end }}
 	}
 
 	{{- range $entryIndex, $entry := $ingressRule.Entries }}
 		{{- if ne ($entry.SaddrMatch.Except | len) 0 }}
-	chain {{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {
+	chain {{ $cfg.PolicyPrefix }}{{ $policy.Name }}-RULE{{ $ruleIndex }}-CIDR{{ $entryIndex }} {
 		{{- range $addr := $entry.SaddrMatch.Except }}
 		ip saddr {{ $addr }} return;
 		{{- end}}
@@ -93,9 +115,11 @@ table ip {{ .NATTableName }} {
 {{- end }}
 	}
 
+{{- if $cfg.EnableSNAT }}
 	chain {{ .NATPostroutingChainName }} {
 		mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} masquerade;
 	}
+{{- end }}
 }
 `))
 
@@ -151,15 +175,33 @@ type nftablesConfig struct {
 	NATTableName            string
 	NATPostroutingChainName string
 	NATPreroutingChainName  string
+	PolicyPrefix            string
 	FWMarkBits              uint32
 	FWMarkMask              uint32
 	Forwards                []nftablesForward
 	NetworkPolicies         map[string]networkPolicy
 	PolicyAssignments       []policyAssignment
+	ExistingPolicyChains    []string
+	EnableSNAT              bool
+	PartialReload           bool
 }
 
 type NftablesGenerator struct {
 	Cfg config.Nftables
+}
+
+type nftablesChainListResultChain struct {
+	Family string `json:"family"`
+	Table  string `json:"table"`
+	Name   string `json:"name"`
+}
+
+type nftablesChainListResultEntry struct {
+	Chain nftablesChainListResultChain `json:"chain,omitempty"`
+}
+
+type nftablesChainListResult struct {
+	Nftables []nftablesChainListResultEntry `json:"nftables"`
 }
 
 // Takes a slice of strings and produces a list ready to be used in an nftables rule
@@ -334,6 +376,65 @@ func mapProtocol(k8sproto corev1.Protocol) (string, error) {
 	}
 }
 
+// fetchNftablesChainList returns a result object with all nftables chains of type `tableType` using the `nftCommand`.
+func fetchNftablesChainList(nftCommand []string, tableType string) (result nftablesChainListResult, err error) {
+	// Prepare "list chains" command to get all chains of type tableType
+	cmd := append(nftCommand, "-j", "list", "chains", tableType)
+
+	klog.V(4).Infof("executing command: %#v", cmd)
+
+	cmdObj := exec.Command(cmd[0], cmd[1:]...)
+	cmdObj.Stderr = os.Stderr
+
+	out, err := cmdObj.Output()
+	if err != nil {
+		return result, fmt.Errorf("failed to get exiting policy chains via %#v: %s", cmd, err.Error())
+	}
+
+	// Parse result from JSON
+	err = json.Unmarshal(out, &result)
+	if err != nil {
+		return result, fmt.Errorf("could not parse existing policy json: %s", err.Error())
+	}
+
+	return result, nil
+}
+
+// filterNftablesChainListByPrefix filters a given chain list by `tableName`, `tableType` and `prefix`.
+func filterNftablesChainListByPrefix(chains nftablesChainListResult, tableName string, tableType string, prefix string) (filteredChains []string, err error) {
+	if prefix == "" {
+		return filteredChains, fmt.Errorf("prefix must be set when filtering by prefix")
+	}
+
+	// Iterate over all returned chains and check if the conditions are met
+	for _, resultEntry := range chains.Nftables {
+		if resultEntry.Chain.Family == tableType &&
+			resultEntry.Chain.Table == tableName &&
+			strings.HasPrefix(resultEntry.Chain.Name, prefix) {
+			// Append chain name to list
+			filteredChains = append(filteredChains, resultEntry.Chain.Name)
+		}
+	}
+
+	return filteredChains, nil
+}
+
+// getExistingPolicyChains returns all chain names of type `filterTableType` in table `filterTableName` that
+// start with `policyPrefix`. Uses the `nftCommand` to retrieve the list via fetchNftablesChainList.
+func getExistingPolicyChains(nftCommand []string, filterTableName string, filterTableType string, policyPrefix string) (existingChains []string, err error) {
+	chains, err := fetchNftablesChainList(nftCommand, filterTableType)
+	if err != nil {
+		return existingChains, err
+	}
+
+	existingChains, err = filterNftablesChainListByPrefix(chains, filterTableName, filterTableType, policyPrefix)
+	if err != nil {
+		return existingChains, err
+	}
+
+	return existingChains, nil
+}
+
 // Generates a config suitable for nftablesTemplate from a LoadBalancer model
 func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nftablesConfig, error) {
 	result := &nftablesConfig{
@@ -343,11 +444,15 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		NATTableName:            g.Cfg.NATTableName,
 		NATPostroutingChainName: g.Cfg.NATPostroutingChainName,
 		NATPreroutingChainName:  g.Cfg.NATPreroutingChainName,
+		PolicyPrefix:            g.Cfg.PolicyPrefix,
 		FWMarkBits:              g.Cfg.FWMarkBits,
 		FWMarkMask:              g.Cfg.FWMarkMask,
 		Forwards:                []nftablesForward{},
 		NetworkPolicies:         map[string]networkPolicy{},
 		PolicyAssignments:       []policyAssignment{},
+		ExistingPolicyChains:    []string{},
+		EnableSNAT:              g.Cfg.EnableSNAT,
+		PartialReload:           g.Cfg.PartialReload,
 	}
 
 	for _, ingress := range m.Ingress {
@@ -391,6 +496,15 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 	}
 	for _, policy := range policies {
 		result.NetworkPolicies[policy.Name] = policy
+	}
+
+	if g.Cfg.PartialReload {
+		// When partial reload is enabled, get all existing policy chain names to delete them in the template
+		result.ExistingPolicyChains, err = getExistingPolicyChains(
+			g.Cfg.NftCommand,
+			g.Cfg.FilterTableName,
+			g.Cfg.FilterTableType,
+			g.Cfg.PolicyPrefix)
 	}
 
 	return result, nil

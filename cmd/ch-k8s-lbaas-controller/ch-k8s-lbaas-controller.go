@@ -20,6 +20,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/static"
 	"net"
 	"net/http"
 	"time"
@@ -65,22 +66,35 @@ func main() {
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*300)
 
-	fileCfg, err := config.ReadControllerConfigFromFile(configPath)
+	fileCfg, err := config.ReadControllerConfigFromFile(configPath, true)
 	if err != nil {
 		klog.Fatalf("Failed reading config: %s", err.Error())
 	}
-	config.FillControllerConfig(&fileCfg)
 
-	osClient, err := openstack.NewClient(&fileCfg.OpenStack.Global)
+	err = config.ValidateControllerConfig(&fileCfg)
 	if err != nil {
-		klog.Fatalf("Failed to connect to OpenStack: %s", err.Error())
+		klog.Fatalf("invalid configuration: %s", err.Error())
 	}
 
-	l3portmanager, err := osClient.NewOpenStackL3PortManager(
-		&fileCfg.OpenStack.Networking,
-	)
-	if err != nil {
-		klog.Fatalf("Failed to create L3 port manager: %s", err.Error())
+	var l3portmanager controller.L3PortManager
+
+	if fileCfg.PortManager == config.PortManagerOpenstack {
+		osClient, err := openstack.NewClient(&fileCfg.OpenStack.Global)
+		if err != nil {
+			klog.Fatalf("Failed to connect to OpenStack: %s", err.Error())
+		}
+
+		l3portmanager, err = osClient.NewOpenStackL3PortManager(
+			&fileCfg.OpenStack.Networking,
+		)
+		if err != nil {
+			klog.Fatalf("Failed to create openstack L3 port manager: %s", err.Error())
+		}
+	} else if fileCfg.PortManager == config.PortManagerStatic {
+		l3portmanager, err = static.NewStaticL3PortManager(&fileCfg.Static)
+		if err != nil {
+			klog.Fatalf("Failed to create static L3 port manager: %s", err.Error())
+		}
 	}
 
 	agentController, err := controller.NewHTTPAgentController(fileCfg.Agents)

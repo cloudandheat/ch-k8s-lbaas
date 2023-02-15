@@ -33,7 +33,6 @@ import (
 	"k8s.io/klog"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 type RequeueMode int
@@ -56,7 +55,7 @@ const (
 
 	MessageEventServiceTakenOver              = "Service taken over by cah-loadbalancer-controller"
 	MessageEventServiceReleased               = "Service released by cah-loadbalancer-controller"
-	MessageEventServiceMapped                 = "Service mapped to OpenStack port %q"
+	MessageEventServiceMapped                 = "Service mapped to L3 port %q"
 	MessageEventServiceAssigned               = "Service was assigned to the external IP address %q"
 	MessageEventServiceUnassignedForRemapping = "Service was unassigned due to upcoming port remapping"
 	MessageEventServiceUnassignedStale        = "Cleared stale IP address information"
@@ -70,7 +69,7 @@ var (
 )
 
 type Worker struct {
-	l3portmanager   openstack.L3PortManager
+	l3portmanager   L3PortManager
 	portmapper      PortMapper
 	servicesLister  corelisters.ServiceLister
 	kubeclientset   kubernetes.Interface
@@ -141,10 +140,10 @@ func (w *Worker) releaseService(svcSrc *corev1.Service) error {
 
 // Map the service using the port mapper
 //
-// - Return true and no error if the resource was updated.
-// - Return false and no error if the resource was not updated.
-// - Return an error mapping the service or updating the resource failed and it
-//   needs to be retired.
+//   - Return true and no error if the resource was updated.
+//   - Return false and no error if the resource was not updated.
+//   - Return an error mapping the service or updating the resource failed and it
+//     needs to be retired.
 //
 // This function will post the updated service to the k8s API.
 func (w *Worker) mapService(svcSrc *corev1.Service) (updated bool, err error) {
@@ -193,10 +192,10 @@ func (w *Worker) mapService(svcSrc *corev1.Service) (updated bool, err error) {
 
 // Update the load balancer status information
 //
-// - Return true and no error if the resource was updated.
-// - Return false and no error if the resource was not updated.
-// - Return an error retrieving the ingress information or updating the resource
-//   failed and it needs to be retired.
+//   - Return true and no error if the resource was updated.
+//   - Return false and no error if the resource was not updated.
+//   - Return an error retrieving the ingress information or updating the resource
+//     failed and it needs to be retired.
 //
 // This function will post the updated status to the k8s API.
 func (w *Worker) updateServiceStatus(svcSrc *corev1.Service) (updated bool, err error) {
@@ -236,7 +235,7 @@ func (w *Worker) cleanupPorts() error {
 }
 
 func NewWorker(
-	l3portmanager openstack.L3PortManager,
+	l3portmanager L3PortManager,
 	portmapper PortMapper,
 	kubeclientset kubernetes.Interface,
 	services corelisters.ServiceLister,

@@ -27,7 +27,6 @@ import (
 	"k8s.io/klog"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 var (
@@ -35,7 +34,7 @@ var (
 )
 
 type PodLoadBalancerModelGenerator struct {
-	l3portmanager   openstack.L3PortManager
+	l3portmanager   L3PortManager
 	services        corelisters.ServiceLister
 	networkpolicies networkinglisters.NetworkPolicyLister
 	endpoints       corelisters.EndpointsLister
@@ -43,7 +42,7 @@ type PodLoadBalancerModelGenerator struct {
 }
 
 func NewPodLoadBalancerModelGenerator(
-	l3portmanager openstack.L3PortManager,
+	l3portmanager L3PortManager,
 	services corelisters.ServiceLister,
 	endpoints corelisters.EndpointsLister,
 	networkpolicies networkinglisters.NetworkPolicyLister,

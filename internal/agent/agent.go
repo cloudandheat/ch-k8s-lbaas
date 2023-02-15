@@ -289,21 +289,27 @@ func (h *ApplyHandlerv1) ProcessRequest(lbcfg *model.LoadBalancer) (int, string)
 		return 400, err.Error() // Bad Request
 	}
 
-	changed, err := h.KeepalivedConfig.WriteWithRollback(lbcfg)
-	if err != nil {
-		msg := fmt.Sprintf("Failed to apply keepalived config: %s", err.Error())
-		klog.Error(msg)
-		return 500, msg
+	keepalivedChanged, nftablesChanged := false, false
+
+	if h.KeepalivedConfig != nil {
+		keepalivedChanged, err = h.KeepalivedConfig.WriteWithRollback(lbcfg)
+		if err != nil {
+			msg := fmt.Sprintf("Failed to apply keepalived config: %s", err.Error())
+			klog.Error(msg)
+			return 500, msg
+		}
 	}
 
-	changed, err = h.NftablesConfig.WriteWithRollback(lbcfg)
-	if err != nil {
-		msg := fmt.Sprintf("Failed to apply nftables config: %s", err.Error())
-		klog.Error(msg)
-		return 500, msg
+	if h.NftablesConfig != nil {
+		nftablesChanged, err = h.NftablesConfig.WriteWithRollback(lbcfg)
+		if err != nil {
+			msg := fmt.Sprintf("Failed to apply nftables config: %s", err.Error())
+			klog.Error(msg)
+			return 500, msg
+		}
 	}
 
-	if changed {
+	if keepalivedChanged || nftablesChanged {
 		klog.Infof("Applied configuration update: %#v", lbcfg)
 	}
 

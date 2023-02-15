@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/static"
 	"io"
 	"os"
 
@@ -32,6 +33,13 @@ const (
 	BackendLayerPod       BackendLayer = "Pod"
 )
 
+type PortManager string
+
+const (
+	PortManagerOpenstack PortManager = "openstack"
+	PortManagerStatic    PortManager = "static"
+)
+
 type Agent struct {
 	URL string `toml:"url"`
 }
@@ -45,6 +53,8 @@ type ServiceConfig struct {
 }
 
 type Keepalived struct {
+	Enabled bool `toml:"enabled"`
+
 	VRRPPassword string `toml:"vrrp-password"`
 	// TODO: allow different priorities per-service so that inbound traffic
 	// is being balanced between VMs.
@@ -56,14 +66,18 @@ type Keepalived struct {
 }
 
 type Nftables struct {
-	FilterTableName         string `toml:"filter-table-name"`
-	FilterTableType         string `toml:"filter-table-type"`
-	FilterForwardChainName  string `toml:"filter-forward-chain"`
-	NATTableName            string `toml:"nat-table-name"`
-	NATPreroutingChainName  string `toml:"nat-prerouting-chain"`
-	NATPostroutingChainName string `toml:"nat-postrouting-chain"`
-	FWMarkBits              uint32 `toml:"fwmark-bits"`
-	FWMarkMask              uint32 `toml:"fwmark-mask"`
+	FilterTableName         string   `toml:"filter-table-name"`
+	FilterTableType         string   `toml:"filter-table-type"`
+	FilterForwardChainName  string   `toml:"filter-forward-chain"`
+	NATTableName            string   `toml:"nat-table-name"`
+	NATPreroutingChainName  string   `toml:"nat-prerouting-chain"`
+	NATPostroutingChainName string   `toml:"nat-postrouting-chain"`
+	PolicyPrefix            string   `toml:"policy-prefix"`
+	NftCommand              []string `toml:"nft-command"`
+	PartialReload           bool     `toml:"partial-reload"`
+	EnableSNAT              bool     `toml:"enable-snat"`
+	FWMarkBits              uint32   `toml:"fwmark-bits"`
+	FWMarkMask              uint32   `toml:"fwmark-mask"`
 
 	Service ServiceConfig `toml:"service"`
 }
@@ -78,9 +92,12 @@ type ControllerConfig struct {
 	BindAddress string `toml:"bind-address"`
 	BindPort    int32  `toml:"bind-port"`
 
-	OpenStack    openstack.Config `toml:"openstack"`
-	Agents       Agents           `toml:"agents"`
-	BackendLayer BackendLayer     `toml:"backend-layer"`
+	PortManager  PortManager  `toml:"port-manager"`
+	BackendLayer BackendLayer `toml:"backend-layer"`
+
+	OpenStack openstack.Config `toml:"openstack"`
+	Static    static.Config    `toml:"static"`
+	Agents    Agents           `toml:"agents"`
 }
 
 type AgentConfig struct {
@@ -92,70 +109,85 @@ type AgentConfig struct {
 	Nftables   Nftables   `toml:"nftables"`
 }
 
-func ReadControllerConfig(config io.Reader) (result ControllerConfig, err error) {
-	_, err = toml.DecodeReader(config, &result)
-	return result, err
+func ReadControllerConfig(configReader io.Reader, config *ControllerConfig) error {
+	_, err := toml.DecodeReader(configReader, &config)
+	return err
 }
 
-func ReadControllerConfigFromFile(path string) (ControllerConfig, error) {
+func ReadControllerConfigFromFile(path string, withDefaults bool) (ControllerConfig, error) {
 	fin, err := os.Open(path)
 	if err != nil {
 		return ControllerConfig{}, err
 	}
 	defer fin.Close()
-	return ReadControllerConfig(fin)
+
+	config := ControllerConfig{}
+	if withDefaults {
+		// Fill config before decoding toml to allow boolean default values
+		// See https://github.com/BurntSushi/toml/issues/171
+		FillControllerConfig(&config)
+	}
+
+	err = ReadControllerConfig(fin, &config)
+	if err != nil {
+		return ControllerConfig{}, err
+	}
+
+	return config, nil
 }
 
-func ReadAgentConfig(config io.Reader) (result AgentConfig, err error) {
-	_, err = toml.DecodeReader(config, &result)
-	return result, err
+func ReadAgentConfig(configFile io.Reader, config *AgentConfig) error {
+	_, err := toml.DecodeReader(configFile, &config)
+	return err
 }
 
-func ReadAgentConfigFromFile(path string) (AgentConfig, error) {
+func ReadAgentConfigFromFile(path string, withDefaults bool) (AgentConfig, error) {
 	fin, err := os.Open(path)
 	if err != nil {
 		return AgentConfig{}, err
 	}
 	defer fin.Close()
-	return ReadAgentConfig(fin)
-}
 
-func defaultString(field *string, value string) {
-	if *field == "" {
-		*field = value
+	config := AgentConfig{}
+	if withDefaults {
+		// Fill config before decoding toml to allow boolean default values
+		// See https://github.com/BurntSushi/toml/issues/171
+		FillAgentConfig(&config)
 	}
-}
 
-func defaultStringList(field *[]string, value []string) {
-	if field == nil || len(*field) == 0 {
-		*field = make([]string, len(value))
-		copy(*field, value)
+	err = ReadAgentConfig(fin, &config)
+	if err != nil {
+		return AgentConfig{}, err
 	}
+
+	return config, nil
 }
 
 func FillKeepalivedConfig(cfg *Keepalived) {
-	defaultString(&cfg.VRRPPassword, "useless")
+	cfg.Enabled = true
+	cfg.VRRPPassword = "useless"
 
-	defaultStringList(&cfg.Service.ReloadCommand, []string{"sudo", "systemctl", "reload", "keepalived"})
-	defaultStringList(&cfg.Service.StatusCommand, []string{"sudo", "systemctl", "is-active", "keepalived"})
-	defaultStringList(&cfg.Service.StartCommand, []string{"sudo", "systemctl", "start", "keepalived"})
+	cfg.Service.ReloadCommand = []string{"sudo", "systemctl", "reload", "keepalived"}
+	cfg.Service.StatusCommand = []string{"sudo", "systemctl", "is-active", "keepalived"}
+	cfg.Service.StartCommand = []string{"sudo", "systemctl", "start", "keepalived"}
 }
 
 func FillNftablesConfig(cfg *Nftables) {
-	defaultString(&cfg.FilterTableName, "filter")
-	defaultString(&cfg.FilterTableType, "inet")
-	defaultString(&cfg.FilterForwardChainName, "forward")
-	defaultString(&cfg.NATTableName, "nat")
-	defaultString(&cfg.NATPreroutingChainName, "prerouting")
-	defaultString(&cfg.NATPostroutingChainName, "postrouting")
+	cfg.FilterTableName = "filter"
+	cfg.FilterTableType = "inet"
+	cfg.FilterForwardChainName = "forward"
+	cfg.NATTableName = "nat"
+	cfg.NATPreroutingChainName = "prerouting"
+	cfg.NATPostroutingChainName = "postrouting"
+	cfg.NftCommand = []string{"sudo", "nft"}
+	cfg.EnableSNAT = true
 
-	if cfg.FWMarkBits == 0 {
-		cfg.FWMarkBits = 1
-		cfg.FWMarkMask = 1
-	}
+	cfg.FWMarkBits = 1
+	cfg.FWMarkMask = 1
 
-	defaultStringList(&cfg.Service.ReloadCommand, []string{"sudo", "systemctl", "reload", "nftables"})
-	defaultStringList(&cfg.Service.StartCommand, []string{"sudo", "systemctl", "restart", "nftables"})
+	cfg.Service.ReloadCommand = []string{"sudo", "systemctl", "reload", "nftables"}
+	cfg.Service.StatusCommand = []string{"sudo", "systemctl", "is-active", "nftables"}
+	cfg.Service.StartCommand = []string{"sudo", "systemctl", "restart", "nftables"}
 }
 
 func FillAgentConfig(cfg *AgentConfig) {
@@ -164,13 +196,9 @@ func FillAgentConfig(cfg *AgentConfig) {
 }
 
 func FillControllerConfig(cfg *ControllerConfig) {
-	if cfg.BindPort == 0 {
-		cfg.BindPort = 15203
-	}
-
-	if cfg.BackendLayer == "" {
-		cfg.BackendLayer = BackendLayerNodePort
-	}
+	cfg.PortManager = PortManagerOpenstack
+	cfg.BindPort = 15203
+	cfg.BackendLayer = BackendLayerNodePort
 }
 
 func ValidateControllerConfig(cfg *ControllerConfig) error {
@@ -185,28 +213,53 @@ func ValidateControllerConfig(cfg *ControllerConfig) error {
 		return fmt.Errorf("backend-layer has an invalid value: %q", cfg.BackendLayer)
 	}
 
+	if cfg.PortManager == PortManagerOpenstack {
+		// TODO: Add openstack config validation.
+	} else if cfg.PortManager == PortManagerStatic {
+		if len(cfg.Static.IPv4Addresses) == 0 {
+			return fmt.Errorf("static.ipv4-addresses must have at least one " +
+				"entry if static port manager is used")
+		} else {
+			for _, addr := range cfg.Static.IPv4Addresses {
+				if !addr.Is4() {
+					return fmt.Errorf("%s isn't a valid IPv4 address", addr.String())
+				}
+			}
+		}
+	} else {
+		return fmt.Errorf("%s is not a valid port-manager implementation", cfg.PortManager)
+	}
+
 	return nil
 }
 
 func ValidateAgentConfig(cfg *AgentConfig) error {
-	if cfg.Keepalived.VRIDBase <= 0 {
-		return fmt.Errorf("keepalived.virtual-router-id-base must be greater than zero")
-	}
+	if cfg.Keepalived.Enabled {
+		if cfg.Keepalived.VRIDBase <= 0 {
+			return fmt.Errorf("keepalived.virtual-router-id-base must be greater than zero")
+		}
 
-	if cfg.Keepalived.Priority < 0 {
-		return fmt.Errorf("keepalived.priority must be non-negative")
-	}
+		if cfg.Keepalived.Priority < 0 {
+			return fmt.Errorf("keepalived.priority must be non-negative")
+		}
 
-	if cfg.Keepalived.Interface == "" {
-		return fmt.Errorf("keepalived.interface must be set")
-	}
+		if cfg.Keepalived.Interface == "" {
+			return fmt.Errorf("keepalived.interface must be set")
+		}
 
-	if cfg.Keepalived.Service.ConfigFile == "" {
-		return fmt.Errorf("keepalived.service.config-file must be set")
+		if cfg.Keepalived.Service.ConfigFile == "" {
+			return fmt.Errorf("keepalived.service.config-file must be set")
+		}
 	}
 
 	if cfg.Nftables.Service.ConfigFile == "" {
 		return fmt.Errorf("nftables.service.config-file must be set")
+	}
+
+	if cfg.Nftables.PartialReload {
+		if cfg.Nftables.PolicyPrefix == "" {
+			return fmt.Errorf("nftables.policy-prefix must be set if partial-reload is enabled")
+		}
 	}
 
 	if cfg.SharedSecret == "" {

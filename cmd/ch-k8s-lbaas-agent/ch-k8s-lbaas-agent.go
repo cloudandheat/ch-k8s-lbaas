@@ -38,12 +38,11 @@ func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
 
-	fileCfg, err := config.ReadAgentConfigFromFile(configPath)
+	fileCfg, err := config.ReadAgentConfigFromFile(configPath, true)
 	if err != nil {
 		klog.Fatalf("Failed reading config: %s", err.Error())
 	}
 
-	config.FillAgentConfig(&fileCfg)
 	err = config.ValidateAgentConfig(&fileCfg)
 	if err != nil {
 		klog.Fatalf("invalid configuration: %s", err.Error())
@@ -61,14 +60,23 @@ func main() {
 		},
 	}
 
-	keepalivedConfig := &agent.ConfigManager{
-		Service: fileCfg.Keepalived.Service,
-		Generator: &agent.KeepalivedConfigGenerator{
-			VRIDBase:     fileCfg.Keepalived.VRIDBase,
-			VRRPPassword: fileCfg.Keepalived.VRRPPassword,
-			Interface:    fileCfg.Keepalived.Interface,
-			Priority:     fileCfg.Keepalived.Priority,
-		},
+	var keepalivedConfig *agent.ConfigManager
+
+	if fileCfg.Keepalived.Enabled {
+		keepalivedConfig = &agent.ConfigManager{
+			Service: fileCfg.Keepalived.Service,
+			Generator: &agent.KeepalivedConfigGenerator{
+				VRIDBase:     fileCfg.Keepalived.VRIDBase,
+				VRRPPassword: fileCfg.Keepalived.VRRPPassword,
+				Interface:    fileCfg.Keepalived.Interface,
+				Priority:     fileCfg.Keepalived.Priority,
+			},
+		}
+	}
+
+	// If PartialReload is enabled, reload nftables config directly after start to apply last state
+	if fileCfg.Nftables.PartialReload {
+		nftablesConfig.Reload()
 	}
 
 	http.Handle("/v1/apply", &agent.ApplyHandlerv1{

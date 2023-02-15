@@ -22,7 +22,6 @@ import (
 	"k8s.io/klog"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
 )
 
 var (
@@ -67,17 +66,29 @@ type PortMapper interface {
 }
 
 type PortMapperImpl struct {
-	l3manager openstack.L3PortManager
+	l3manager L3PortManager
 	services  map[string]model.ServiceModel
 	l3ports   map[string]model.L3Port
 }
 
-func NewPortMapper(l3manager openstack.L3PortManager) PortMapper {
-	return &PortMapperImpl{
+func NewPortMapper(l3manager L3PortManager) (PortMapper, error) {
+	portManager := &PortMapperImpl{
 		l3manager: l3manager,
 		services:  make(map[string]model.ServiceModel),
 		l3ports:   make(map[string]model.L3Port),
 	}
+
+	// Load all available ports
+	l3portIDs, err := l3manager.GetAvailablePorts()
+	if err != nil {
+		return portManager, fmt.Errorf("port mapper could not load available l3ports: %s", err)
+	}
+
+	for _, l3portID := range l3portIDs {
+		portManager.emplaceL3Port(l3portID)
+	}
+
+	return portManager, nil
 }
 
 func (c *PortMapperImpl) getServiceKey(svc *corev1.Service) string {
@@ -150,24 +161,39 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 
 	if portID != "" {
 		// the service has a preferred port
-		// TODO: retrieve port information from backend to ensure that it really
-		// exists!
-		l3port, exists := c.l3ports[portID]
+
+		// Check if port exists in backend
+		exists, err := c.l3manager.CheckPortExists(portID)
+		if err != nil {
+			return err
+		}
+
 		if exists {
-			// the port is already known and thus may have allocations. we have
-			// to check if any allocations conflict
-			if !c.isPortSuitableFor(l3port, svcModel.Ports, key) {
-				// and they do! so we have to relocate the service to a
-				// different port
-				// TODO: it would be good if that caused an event on the Service
-				klog.Warningf(
-					"relocating service %q to a new port due to conflict on old port %s",
-					key,
-					portID)
-				portID = ""
+			l3port, known := c.l3ports[portID]
+			if known {
+				// the port is already known and thus may have allocations. we have
+				// to check if any allocations conflict
+				if !c.isPortSuitableFor(l3port, svcModel.Ports, key) {
+					// and they do! so we have to relocate the service to a
+					// different port
+					// TODO: it would be good if that caused an event on the Service
+					klog.Warningf(
+						"relocating service %q to a new port due to conflict on old port %s",
+						key,
+						portID)
+					portID = ""
+				}
+			} else {
+				// the port is not known yet, emplace an empty l3 port with the given ID
+				c.emplaceL3Port(portID)
 			}
 		} else {
-			c.emplaceL3Port(portID)
+			// the port does not exist in the backend, we need to relocate the service
+			klog.Warningf(
+				"relocating service %q because it has an invalid port %s",
+				key,
+				portID)
+			portID = ""
 		}
 	}
 
@@ -183,7 +209,6 @@ func (c *PortMapperImpl) MapService(svc *corev1.Service) error {
 			// if no existing port can fit the bill, we move on to create a new
 			// port
 			portID, err = c.createNewL3Port()
-			klog.Infof("Created new port with portID=%v", portID)
 			if err != nil {
 				// if that fails too, we simply cannot map the service.
 				return err
@@ -256,6 +281,9 @@ func (c *PortMapperImpl) UnmapService(id model.ServiceIdentifier) error {
 	return nil
 }
 
+// SetAvailableL3Ports marks a list of l3 ports as available.
+// All other l3 ports are removed from the l3ports list.
+// All services that belong to other ports are removed from the services list and will be returned.
 func (c *PortMapperImpl) SetAvailableL3Ports(portIDs []string) ([]model.ServiceIdentifier, error) {
 	vlog := klog.V(4)
 
