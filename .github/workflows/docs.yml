@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - master
-      - vyos-docs # REMOVE BEFORE MERGE
 
 permissions:
   contents: write
