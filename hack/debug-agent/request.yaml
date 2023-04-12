@@ -1,7 +1,7 @@
 load-balancer-config:
   ingress:
     - address: 185.187.1.1
-      port-filters:
+      ports:
         - protocol: TCP
           inbound-port: 80
           destination-addresses:
