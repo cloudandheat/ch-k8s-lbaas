@@ -63,6 +63,7 @@ func (opts CustomCreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
 type OpenStackL3PortManager struct {
 	client    *gophercloud.ServiceClient
 	networkID string
+	projectID string
 	cfg       *NetworkingOpts
 	ports     PortClient
 }
@@ -84,10 +85,12 @@ func (client *OpenStackClient) NewOpenStackL3PortManager(networkConfig *Networki
 		client:    networkingclient,
 		cfg:       networkConfig,
 		networkID: networkID,
+		projectID: client.projectID,
 		ports: NewPortClient(
 			networkingclient,
 			TagLBManagedPort,
 			networkConfig.UseFloatingIPs,
+			client.projectID,
 		),
 	}, nil
 }
@@ -205,7 +208,8 @@ func (pm *OpenStackL3PortManager) deleteUnusedFloatingIPs() error {
 	pager := floatingipsv2.List(
 		pm.client,
 		floatingipsv2.ListOpts{
-			Tags: TagLBManagedPort,
+			Tags:      TagLBManagedPort,
+			ProjectID: pm.projectID,
 		},
 	)
 

@@ -32,6 +32,7 @@ type UncachedClient struct {
 	client         *gophercloud.ServiceClient
 	tag            string
 	useFloatingIPs bool
+	projectID      string
 }
 
 type PortClient interface {
@@ -39,18 +40,19 @@ type PortClient interface {
 	GetPortByID(ID string) (*portsv2.Port, *floatingipsv2.FloatingIP, error)
 }
 
-func NewPortClient(networkingclient *gophercloud.ServiceClient, tag string, useFloatingIPs bool) *UncachedClient {
+func NewPortClient(networkingclient *gophercloud.ServiceClient, tag string, useFloatingIPs bool, projectID string) *UncachedClient {
 	return &UncachedClient{
 		client:         networkingclient,
 		tag:            tag,
 		useFloatingIPs: useFloatingIPs,
+		projectID:      projectID,
 	}
 }
 
 func (pc *UncachedClient) GetPorts() (ports []portsv2.Port, err error) {
 	err = portsv2.List(
 		pc.client,
-		portsv2.ListOpts{Tags: pc.tag},
+		portsv2.ListOpts{Tags: pc.tag, ProjectID: pc.projectID},
 	).EachPage(func(page pagination.Page) (bool, error) {
 		fetched_ports, err := portsv2.ExtractPorts(page)
 		if err != nil {
@@ -79,7 +81,7 @@ func (pc *UncachedClient) GetPortByID(ID string) (port *portsv2.Port, fip *float
 	if pc.useFloatingIPs {
 		err = floatingipsv2.List(
 			pc.client,
-			floatingipsv2.ListOpts{Tags: pc.tag, PortID: ID},
+			floatingipsv2.ListOpts{Tags: pc.tag, PortID: ID, ProjectID: pc.projectID},
 		).EachPage(func(page pagination.Page) (bool, error) {
 			fips, err := floatingipsv2.ExtractFloatingIPs(page)
 			if err != nil {

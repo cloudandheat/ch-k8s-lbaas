@@ -22,6 +22,7 @@ import (
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
+	tokens3 "github.com/gophercloud/gophercloud/openstack/identity/v3/tokens"
 	"github.com/gophercloud/utils/openstack/clientconfig"
 
 	netutil "k8s.io/apimachinery/pkg/util/net"
@@ -64,8 +65,9 @@ type Config struct {
 }
 
 type OpenStackClient struct {
-	provider *gophercloud.ProviderClient
-	region   string
+	provider  *gophercloud.ProviderClient
+	region    string
+	projectID string
 }
 
 func (cfg AuthOpts) ToAuthOptions() gophercloud.AuthOptions {
@@ -143,9 +145,18 @@ func NewClient(cfg *AuthOpts) (*OpenStackClient, error) {
 		return nil, err
 	}
 
+	projectID := cfg.ProjectID
+	if projectID == "" {
+		projectID, err = getProjectID(provider)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &OpenStackClient{
-		provider: provider,
-		region:   cfg.Region,
+		provider:  provider,
+		region:    cfg.Region,
+		projectID: projectID,
 	}, nil
 }
 
@@ -153,4 +164,24 @@ func (client *OpenStackClient) NewNetworkV2() (*gophercloud.ServiceClient, error
 	return openstack.NewNetworkV2(client.provider, gophercloud.EndpointOpts{
 		Region: client.region,
 	})
+}
+
+// Extract project ID from the provider client authentication result.
+func getProjectID(provider *gophercloud.ProviderClient) (string, error) {
+	authResult := provider.GetAuthResult()
+	if authResult == nil {
+		return "", fmt.Errorf("no AuthResult from provider client")
+	}
+
+	// We expect only identity v3 tokens
+	token, ok := authResult.(tokens3.CreateResult)
+	if !ok {
+		return "", fmt.Errorf("unexpected AuthResult type %t", authResult)
+	}
+
+	project, err := token.ExtractProject()
+	if err != nil {
+		return "", err
+	}
+	return project.ID, nil
 }
