@@ -20,10 +20,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/static"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/static"
 
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -86,6 +87,8 @@ func main() {
 
 		l3portmanager, err = osClient.NewOpenStackL3PortManager(
 			&fileCfg.OpenStack.Networking,
+			fileCfg.Agents.Agents,
+			fileCfg.Agents.AdditionalIps,
 		)
 		if err != nil {
 			klog.Fatalf("Failed to create openstack L3 port manager: %s", err.Error())

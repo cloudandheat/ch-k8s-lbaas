@@ -16,6 +16,8 @@ package openstack
 
 import (
 	"errors"
+
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 	"github.com/gophercloud/gophercloud"
 	tags "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/attributestags"
 	floatingipsv2 "github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
@@ -61,14 +63,17 @@ func (opts CustomCreateOpts) ToPortCreateMap() (map[string]interface{}, error) {
 }
 
 type OpenStackL3PortManager struct {
-	client    *gophercloud.ServiceClient
-	networkID string
-	projectID string
-	cfg       *NetworkingOpts
-	ports     PortClient
+	client                 *gophercloud.ServiceClient
+	networkID              string
+	projectID              string
+	cfg                    *config.NetworkingOpts
+	additionalAddressPairs []string
+	agents                 []config.Agent
+	ports                  PortClient
 }
 
-func (client *OpenStackClient) NewOpenStackL3PortManager(networkConfig *NetworkingOpts) (*OpenStackL3PortManager, error) {
+func (client *OpenStackClient) NewOpenStackL3PortManager(networkConfig *config.NetworkingOpts, agents []config.Agent, additionalAddressPairs []string) (*OpenStackL3PortManager, error) {
+
 	networkingclient, err := client.NewNetworkV2()
 	if err != nil {
 		return nil, err
@@ -82,10 +87,12 @@ func (client *OpenStackClient) NewOpenStackL3PortManager(networkConfig *Networki
 	networkID := subnet.NetworkID
 
 	return &OpenStackL3PortManager{
-		client:    networkingclient,
-		cfg:       networkConfig,
-		networkID: networkID,
-		projectID: client.projectID,
+		client:                 networkingclient,
+		cfg:                    networkConfig,
+		networkID:              networkID,
+		projectID:              client.projectID,
+		additionalAddressPairs: additionalAddressPairs,
+		agents:                 agents,
 		ports: NewPortClient(
 			networkingclient,
 			TagLBManagedPort,
