@@ -16,6 +16,7 @@ package openstack
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/config"
 	"github.com/gophercloud/gophercloud"
@@ -37,6 +38,7 @@ var (
 	ErrFixedIPMissing      = errors.New("Port has no IP address assigned")
 	ErrPortIsNil           = errors.New("Port is nil")
 	ErrNoFloatingIPCreated = errors.New("No floating IP was created by OpenStack")
+	ErrVRRPSetupFailed     = errors.New("Failed to update address pairs of all agents")
 )
 
 // We need options which are not included in the default gophercloud struct
@@ -159,7 +161,7 @@ func (pm *OpenStackL3PortManager) CheckPortExists(portID string) (bool, error) {
 }
 
 func (pm *OpenStackL3PortManager) ProvisionPort() (string, error) {
-	port, err := portsv2.Create(
+	port, err := pm.ports.Create(
 		pm.client,
 		CustomCreateOpts{
 			NetworkID:   pm.networkID,
@@ -169,7 +171,7 @@ func (pm *OpenStackL3PortManager) ProvisionPort() (string, error) {
 			},
 			PortSecurityEnabled: boolPtr(false),
 		},
-	).Extract()
+	)
 	// XXX: this is meh because we can only set the tag after the port was
 	// created. If we get killed between the previous line and setting the
 	// tag, the port will linger, unusedly.
@@ -180,8 +182,7 @@ func (pm *OpenStackL3PortManager) ProvisionPort() (string, error) {
 	}
 
 	cleanupPort := func() {
-		klog.Infof("Deleting port %v", port.ID)
-		deleteErr := portsv2.Delete(pm.client, port.ID).ExtractErr()
+		deleteErr := pm.deletePort(port.ID)
 		if deleteErr != nil {
 			klog.Warningf(
 				"resource leak: could not delete dysfunctional port %q: %s:",
@@ -200,12 +201,17 @@ func (pm *OpenStackL3PortManager) ProvisionPort() (string, error) {
 	}
 
 	if pm.cfg.UseFloatingIPs {
-		err = pm.provisionFloatingIP(port.ID)
+		err := pm.provisionFloatingIP(port.ID)
 		if err != nil {
 			klog.Warningf("Couldn't provide floating ip for port=%v: %s", port.ID, err)
 			cleanupPort()
 			return "", ErrNoFloatingIPCreated
 		}
+	}
+
+	err = pm.EnsureAgentsState()
+	if err != nil {
+		klog.Warningf("VRRP setup for port=%v failed during provisioning: %s", port.ID, err)
 	}
 
 	return port.ID, nil
@@ -269,9 +275,8 @@ func (pm *OpenStackL3PortManager) CleanUnusedPorts(usedPorts []string) error {
 			continue
 		}
 
-		klog.Infof("Trying to delete port %q", port.ID)
 		// port not in use, issue deletion
-		err := portsv2.Delete(pm.client, port.ID).ExtractErr()
+		err := pm.deletePort(port.ID)
 		if err != nil {
 			klog.Warningf("Failed to delete unused port %q: %s. The operation will be retried later.", port.ID, err)
 		}
@@ -297,6 +302,61 @@ func (pm *OpenStackL3PortManager) GetAvailablePorts() ([]string, error) {
 		i += 1
 	}
 	return result, nil
+}
+
+// Ensures that all fixed IPs of L3 ports as well as additional configured IPs
+// are configured as allowed address pair of all agent nodes. Should be run periodically
+// to ensure a correct setup in case an agent was unresponsive earlier
+func (pm *OpenStackL3PortManager) EnsureAgentsState() error {
+	ports, err := pm.ports.GetPorts()
+	if err != nil {
+		klog.Warningf("Failed to get L3 ports during VRRP setup: %s", err)
+		return err
+	}
+
+	addressPairs := []portsv2.AddressPair{}
+
+	for _, ip := range pm.additionalAddressPairs {
+		addressPairs = append(addressPairs, portsv2.AddressPair{IPAddress: ip})
+	}
+
+	for _, port := range ports {
+		if len(port.FixedIPs) == 0 {
+			klog.Warningf("L3 port %v has no fixed IPs. Skipping this port during VRRP setup.", port.ID)
+		}
+
+		for _, ip := range port.FixedIPs {
+			addressPairs = append(addressPairs, portsv2.AddressPair{IPAddress: ip.IPAddress})
+		}
+	}
+
+	allSucceeded := true
+
+	var wg sync.WaitGroup
+	for i := range pm.agents {
+		wg.Add(1)
+		go func(agent *config.Agent) {
+			_, err := pm.ports.Update(
+				pm.client,
+				agent.PortId,
+				portsv2.UpdateOpts{
+					AllowedAddressPairs: &addressPairs,
+				},
+			)
+			if err != nil {
+				klog.Warningf("Failed to configure VRRP address pairs for agent port %v : %s", agent.PortId, err)
+				allSucceeded = false
+			}
+			defer wg.Done()
+		}(&pm.agents[i])
+	}
+
+	wg.Wait()
+	if !allSucceeded {
+		return ErrVRRPSetupFailed
+	}
+
+	return nil
 }
 
 func (pm *OpenStackL3PortManager) GetExternalAddress(portID string) (string, string, error) {
@@ -340,4 +400,16 @@ func (pm *OpenStackL3PortManager) GetInternalAddress(portID string) (string, err
 	}
 
 	return port.FixedIPs[0].IPAddress, nil
+}
+
+func (pm *OpenStackL3PortManager) deletePort(portID string) error {
+	klog.Infof("Trying to delete port %q", portID)
+
+	err := pm.ports.Delete(pm.client, portID).ExtractErr()
+
+	if err == nil {
+		pm.EnsureAgentsState()
+	}
+
+	return err
 }

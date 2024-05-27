@@ -228,6 +228,8 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	// happens only after three sync intervals (900 seconds).
 	go wait.Until(c.periodicCleanup, 907*time.Second, stopCh)
 
+	go wait.Until(c.ensureAgentsState, 300*time.Second, stopCh)
+
 	klog.Info("Started workers")
 	<-stopCh
 	klog.Info("Shutting down workers")
@@ -251,6 +253,10 @@ func (c *Controller) periodicCleanup() {
 		klog.Info("Triggering removal of the cleanup barrier")
 		c.worker.EnqueueJob(&RemoveCleanupBarrierJob{})
 	}
+}
+
+func (c *Controller) ensureAgentsState() {
+	c.worker.EnqueueJob(&EnsureAgentsStateJob{})
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt

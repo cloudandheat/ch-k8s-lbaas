@@ -85,7 +85,7 @@ type Nftables struct {
 type Agents struct {
 	SharedSecret  string   `toml:"shared-secret"`
 	TokenLifetime int      `toml:"token-lifetime"`
-	AdditionalIps []string `toml:"additional-ips"`
+	AdditionalIps []string `toml:"additional-address-pairs"`
 	Agents        []Agent  `toml:"agent"`
 }
 

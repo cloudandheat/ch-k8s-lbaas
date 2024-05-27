@@ -36,8 +36,11 @@ type UncachedClient struct {
 }
 
 type PortClient interface {
+	Create(c *gophercloud.ServiceClient, opts portsv2.CreateOptsBuilder) (*portsv2.Port, error)
 	GetPorts() ([]portsv2.Port, error)
 	GetPortByID(ID string) (*portsv2.Port, *floatingipsv2.FloatingIP, error)
+	Update(c *gophercloud.ServiceClient, id string, opts portsv2.UpdateOptsBuilder) (*portsv2.Port, error)
+	Delete(c *gophercloud.ServiceClient, id string) portsv2.DeleteResult
 }
 
 func NewPortClient(networkingclient *gophercloud.ServiceClient, tag string, useFloatingIPs bool, projectID string) *UncachedClient {
@@ -47,6 +50,10 @@ func NewPortClient(networkingclient *gophercloud.ServiceClient, tag string, useF
 		useFloatingIPs: useFloatingIPs,
 		projectID:      projectID,
 	}
+}
+
+func (pc *UncachedClient) Create(c *gophercloud.ServiceClient, opts portsv2.CreateOptsBuilder) (*portsv2.Port, error) {
+	return portsv2.Create(c, opts).Extract()
 }
 
 func (pc *UncachedClient) GetPorts() (ports []portsv2.Port, err error) {
@@ -101,4 +108,12 @@ func (pc *UncachedClient) GetPortByID(ID string) (port *portsv2.Port, fip *float
 		}
 	}
 	return port, fip, nil
+}
+
+func (pc *UncachedClient) Update(c *gophercloud.ServiceClient, id string, opts portsv2.UpdateOptsBuilder) (*portsv2.Port, error) {
+	return portsv2.Update(c, id, opts).Extract()
+}
+
+func (pc *UncachedClient) Delete(c *gophercloud.ServiceClient, id string) (r portsv2.DeleteResult) {
+	return portsv2.Delete(c, id)
 }
