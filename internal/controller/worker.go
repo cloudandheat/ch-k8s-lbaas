@@ -510,3 +510,17 @@ func (j *UpdateConfigJob) Run(w *Worker) (RequeueMode, error) {
 func (j *UpdateConfigJob) ToString() string {
 	return "UpdateConfigJob"
 }
+
+type EnsureAgentsStateJob struct{}
+
+func (j *EnsureAgentsStateJob) Run(w *Worker) (RequeueMode, error) {
+	err := w.l3portmanager.EnsureAgentsState()
+	if err != nil {
+		return RequeueTail, err
+	}
+	return Drop, nil
+}
+
+func (j *EnsureAgentsStateJob) ToString() string {
+	return "CheckAgentsJob"
+}

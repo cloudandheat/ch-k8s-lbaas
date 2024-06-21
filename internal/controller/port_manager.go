@@ -5,6 +5,8 @@ type L3PortManager interface {
 	ProvisionPort() (string, error)
 	// CleanUnusedPorts deletes all L3 ports that are currently not used
 	CleanUnusedPorts(usedPorts []string) error
+	// EnsureAgentsState ensures that all agents are configured correctly
+	EnsureAgentsState() error
 	// GetAvailablePorts returns all L3 ports that are available
 	GetAvailablePorts() ([]string, error)
 	// GetExternalAddress returns the external address (floating IP) and hostname for a given portID

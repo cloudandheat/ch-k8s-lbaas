@@ -2,8 +2,9 @@ package static
 
 import (
 	"fmt"
-	"golang.org/x/exp/slices"
 	"net/netip"
+
+	"golang.org/x/exp/slices"
 )
 
 type Config struct {
@@ -42,6 +43,10 @@ func (pm *StaticL3PortManager) ProvisionPort() (string, error) {
 }
 
 func (pm *StaticL3PortManager) CleanUnusedPorts(usedPorts []string) error {
+	return nil
+}
+
+func (pm *StaticL3PortManager) EnsureAgentsState() error {
 	return nil
 }
 

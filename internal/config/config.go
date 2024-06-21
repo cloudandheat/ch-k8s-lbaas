@@ -16,13 +16,12 @@ package config
 
 import (
 	"fmt"
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/static"
 	"io"
 	"os"
 
-	"github.com/BurntSushi/toml"
+	"github.com/cloudandheat/ch-k8s-lbaas/internal/static"
 
-	"github.com/cloudandheat/ch-k8s-lbaas/internal/openstack"
+	"github.com/BurntSushi/toml"
 )
 
 type BackendLayer string
@@ -41,7 +40,8 @@ const (
 )
 
 type Agent struct {
-	URL string `toml:"url"`
+	URL    string `toml:"url"`
+	PortId string `toml:"port-id"`
 }
 
 type ServiceConfig struct {
@@ -83,9 +83,10 @@ type Nftables struct {
 }
 
 type Agents struct {
-	SharedSecret  string  `toml:"shared-secret"`
-	TokenLifetime int     `toml:"token-lifetime"`
-	Agents        []Agent `toml:"agent"`
+	SharedSecret  string   `toml:"shared-secret"`
+	TokenLifetime int      `toml:"token-lifetime"`
+	AdditionalIps []string `toml:"additional-address-pairs"`
+	Agents        []Agent  `toml:"agent"`
 }
 
 type ControllerConfig struct {
@@ -95,9 +96,9 @@ type ControllerConfig struct {
 	PortManager  PortManager  `toml:"port-manager"`
 	BackendLayer BackendLayer `toml:"backend-layer"`
 
-	OpenStack openstack.Config `toml:"openstack"`
-	Static    static.Config    `toml:"static"`
-	Agents    Agents           `toml:"agents"`
+	OpenStack Config        `toml:"openstack"`
+	Static    static.Config `toml:"static"`
+	Agents    Agents        `toml:"agents"`
 }
 
 type AgentConfig struct {
