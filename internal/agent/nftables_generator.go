@@ -42,6 +42,8 @@ var (
 # When partial reload is enabled, flush chains.
 flush chain ip {{ .NATTableName }} {{ .NATPreroutingChainName }}
 flush chain ip {{ .NATTableName }} {{ .NATPostroutingChainName }}
+
+{{- if ne .FilterTableName "" }}
 flush chain {{ .FilterTableType }} {{ .FilterTableName }} {{ .FilterForwardChainName }}
 
 # Also delete all existing policy chains. 
@@ -53,7 +55,9 @@ add chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
 delete chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
 {{- end }}
 {{- end }}
+{{- end }}
 
+{{- if ne .FilterTableName "" }}
 table {{ .FilterTableType }} {{ .FilterTableName }} {
 	chain {{ .FilterForwardChainName }} {
 		{{- range $dest := $cfg.PolicyAssignments }}
@@ -103,6 +107,7 @@ table {{ .FilterTableType }} {{ .FilterTableName }} {
 
 	{{- end }}
 }
+{{- end }}
 
 table ip {{ .NATTableName }} {
 	chain {{ .NATPreroutingChainName }} {
@@ -489,22 +494,25 @@ func (g *NftablesGenerator) GenerateStructuredConfig(m *model.LoadBalancer) (*nf
 		return fwdA.InboundPort < fwdB.InboundPort
 	})
 
-	result.PolicyAssignments = copyPolicyAssignment(m.PolicyAssignments)
-	policies, err := copyNetworkPolicies(m.NetworkPolicies)
-	if err != nil {
-		return nil, err
-	}
-	for _, policy := range policies {
-		result.NetworkPolicies[policy.Name] = policy
-	}
+	if g.Cfg.FilterTableName != "" {
+		result.PolicyAssignments = copyPolicyAssignment(m.PolicyAssignments)
+		policies, err := copyNetworkPolicies(m.NetworkPolicies)
+		if err != nil {
+			return nil, err
+		}
+		for _, policy := range policies {
+			result.NetworkPolicies[policy.Name] = policy
+		}
 
-	if g.Cfg.PartialReload {
-		// When partial reload is enabled, get all existing policy chain names to delete them in the template
-		result.ExistingPolicyChains, err = getExistingPolicyChains(
-			g.Cfg.NftCommand,
-			g.Cfg.FilterTableName,
-			g.Cfg.FilterTableType,
-			g.Cfg.PolicyPrefix)
+		if g.Cfg.PartialReload {
+			// When partial reload is enabled, get all existing policy chain names to delete
+			// them in the template
+			result.ExistingPolicyChains, err = getExistingPolicyChains(
+				g.Cfg.NftCommand,
+				g.Cfg.FilterTableName,
+				g.Cfg.FilterTableType,
+				g.Cfg.PolicyPrefix)
+		}
 	}
 
 	return result, nil
