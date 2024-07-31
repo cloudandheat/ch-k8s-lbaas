@@ -34,8 +34,23 @@ import (
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
 )
 
+var funcMap = template.FuncMap{
+	// A very simplistic check if a string looks like an IPv4 address
+	"isIPv4Address": func (ipString string) bool {
+		return strings.Count(ipString, ":") == 0 && strings.Count(ipString, ".") == 3
+	},
+	// A very simplistic check if a string looks like an IPv6 address
+	"isIPv6Address": func (ipString string) bool {
+		return strings.Count(ipString, ":") >= 2
+	},
+	// Replace colons with dash
+	"replaceColons": func (ipString string) string {
+		return strings.ReplaceAll(ipString, ":", "-")
+	},
+}
+
 var (
-	nftablesTemplate = template.Must(template.New("nftables.conf").Parse(`
+	nftablesTemplate = template.Must(template.New("nftables.conf").Funcs(funcMap).Parse(`
 {{ $cfg := . }}
 
 {{- if $cfg.PartialReload }}
@@ -57,14 +72,14 @@ delete chain {{ $cfg.FilterTableType }} {{ $cfg.FilterTableName }} {{ $chain }}
 table {{ .FilterTableType }} {{ .FilterTableName }} {
 	chain {{ .FilterForwardChainName }} {
 		{{- range $dest := $cfg.PolicyAssignments }}
-		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} ip daddr {{ $dest.Address }} goto {{ $cfg.PolicyPrefix }}POD-{{ $dest.Address }};
+		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} {{if isIPv4Address $dest.Address }}ip{{else if isIPv6Address $dest.Address}}ip6{{end}} daddr {{ $dest.Address }} goto {{ $cfg.PolicyPrefix }}POD-{{replaceColons $dest.Address}};
 		{{- end }}
 		ct mark {{ $cfg.FWMarkBits | printf "0x%x" }} and {{ $cfg.FWMarkMask | printf "0x%x" }} accept;
 	}
 
 	# Using uppercase POD to prevent collisions with policy names like 'pod-x.x.x.x'
 	{{- range $pod := $cfg.PolicyAssignments }}
-	chain {{ $cfg.PolicyPrefix }}POD-{{ $pod.Address }} {
+	chain {{ $cfg.PolicyPrefix }}POD-{{replaceColons $pod.Address}} {
 		{{- range $pol := $pod.NetworkPolicies }}
 		jump {{ $cfg.PolicyPrefix }}{{ $pol }};
 		{{- end }}

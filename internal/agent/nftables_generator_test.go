@@ -158,6 +158,18 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 					"block-range",
 				},
 			},
+			{
+				Address: "ff00::1",
+				NetworkPolicies: []string{
+					"allow-http",
+				},
+			},
+			{
+				Address: "ff00::2",
+				NetworkPolicies: []string{
+					"block-range",
+				},
+			},
 		},
 	}
 
