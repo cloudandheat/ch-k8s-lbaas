@@ -4,7 +4,7 @@ This page describes the requirements for running the LBaaS-agent on a VyOS host.
 
 ## Requirements
 
-- VyOS 1.3 (1.4 probably also works with some config changes)
+- VyOS >= 1.3
 - L3-connection to the k8s-cluster
     - For example by establishing BGP peerings with the kubernetes nodes (see below)
 - At least one configured SNAT or DNAT rule via the VyOS configuration interface 
@@ -24,6 +24,7 @@ This page describes the requirements for running the LBaaS-agent on a VyOS host.
 ```toml
 bind-address="0.0.0.0"
 bind-port=15203
+shared-secret="changeme"
 
 [keepalived]
 enabled=false
@@ -47,8 +48,34 @@ status-command=["true"]
 start-command=["sudo", "nft", "-f", "/var/lib/ch-k8s-lbaas-agent/nftables/lbaas.conf"]
 ```
 
-__Warning:__ With VyOS 1.4, the names of the nftables hook changed.
+### VyOS >= 1.4
 
+```toml
+bind-address="0.0.0.0"
+bind-port=15203
+shared-secret="changeme"
+
+[keepalived]
+enabled=false
+
+[nftables]
+filter-table-name="" # "vyos_filter" in VyOS 1.4, but there are no hook-chains as in 1.3 -> Let empty to disable filtering
+filter-table-type="ip"
+filter-forward-chain="" # Does not exist by default in VyOS 1.4, must be created if wanted
+nat-table-name="vyos_nat"
+nat-prerouting-chain="VYOS_PRE_DNAT_HOOK"
+nat-postrouting-chain="VYOS_PRE_SNAT_HOOK"
+partial-reload=true
+policy-prefix="lbaas-"
+nft-command=["sudo","nft"]
+enable-snat=true
+
+[nftables.service]
+config-file="/var/lib/ch-k8s-lbaas-agent/nftables/lbaas.conf"
+reload-command=["sudo", "nft", "-f", "/var/lib/ch-k8s-lbaas-agent/nftables/lbaas.conf"]
+status-command=["true"]
+start-command=["sudo", "nft", "-f", "/var/lib/ch-k8s-lbaas-agent/nftables/lbaas.conf"]
+```
 
 ## BGP Configuration
 

@@ -27,16 +27,21 @@ import (
 	"github.com/cloudandheat/ch-k8s-lbaas/internal/model"
 )
 
-func newNftablesGenerator() *NftablesGenerator {
+func newNftablesGenerator(noFilterTable bool) *NftablesGenerator {
 	cfg := &config.Nftables{}
 	config.FillNftablesConfig(cfg)
+
+	if noFilterTable {
+		cfg.FilterTableName = ""
+	}
+
 	return &NftablesGenerator{
 		Cfg: *cfg,
 	}
 }
 
 func TestNftablesStructuredConfigFromEmptyLBModel(t *testing.T) {
-	g := newNftablesGenerator()
+	g := newNftablesGenerator(false)
 
 	m := &model.LoadBalancer{
 		Ingress: []model.IngressIP{},
@@ -58,7 +63,7 @@ func TestNftablesStructuredConfigFromEmptyLBModel(t *testing.T) {
 }
 
 func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
-	g := newNftablesGenerator()
+	g := newNftablesGenerator(false)
 
 	m := &model.LoadBalancer{
 		Ingress: []model.IngressIP{
@@ -234,7 +239,7 @@ func TestNftablesStructuredConfigFromNonEmptyLBModel(t *testing.T) {
 }
 
 func TestNftablesStructuredConfigSortsAddresses(t *testing.T) {
-	g := newNftablesGenerator()
+	g := newNftablesGenerator(false)
 
 	m := &model.LoadBalancer{
 		Ingress: []model.IngressIP{
@@ -341,4 +346,57 @@ func TestFilterNftablesChainListByPrefix(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, []string{"Prefix-TestChain1"}, filteredChains)
+}
+
+func TestNftablesStructuredConfigWithDisabledPolicies(t *testing.T) {
+	g := newNftablesGenerator(true)
+
+	m := &model.LoadBalancer{
+		Ingress: []model.IngressIP{
+			{
+				Address: "172.23.42.1",
+				Ports: []model.PortForward{
+					{
+						InboundPort:          80,
+						Protocol:             corev1.ProtocolTCP,
+						DestinationPort:      30080,
+						DestinationAddresses: []string{"192.168.0.1", "192.168.0.2"},
+					},
+				},
+			},
+		},
+		NetworkPolicies: []model.NetworkPolicy{
+			{
+				Name: "block-range",
+				AllowedIngresses: []model.AllowedIngress{
+					{
+						IPBlockFilters: []model.IPBlockFilter{
+							{
+								Allow: "0.0.0.0/0",
+								Block: []string{
+									"192.168.2.0/24",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		PolicyAssignments: []model.PolicyAssignment{
+			{
+				Address: "192.168.0.2",
+				NetworkPolicies: []string{
+					"block-range",
+				},
+			},
+		},
+	}
+
+	scfg, err := g.GenerateStructuredConfig(m)
+	assert.Nil(t, err)
+	assert.NotNil(t, scfg)
+	assert.NotNil(t, scfg.Forwards)
+	assert.Equal(t, 1, len(scfg.Forwards))
+	assert.NotNil(t, scfg.NetworkPolicies)
+	assert.Equal(t, 0, len(scfg.NetworkPolicies))
 }
