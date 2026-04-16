@@ -30,6 +30,8 @@ A simple implementation that just has a static list of IP-addresses that can be 
 
 A more complex implementation that can be used if the load-balancer gateways are running on OpenStack.
 
+Running multiple ch-k8s-lbaas instances that manage resources within the same OpenStack project is not supported, there will be collisions.
+
 - Able to create new OpenStack ports with floating-IPs
 - The ID of the L3-port is the OpenStack port ID (UUID)
 - Unused L3-ports can be deleted using the cleanup function

@@ -1,6 +1,6 @@
 # Quickstart
 
-Alternatively to the steps below, LBaaS can be deployed as part of [yaook-k8s](https://yaook.gitlab.io/k8s/quick-start.html ) on OpenStack.
+Alternatively to the steps below, LBaaS can be deployed as part of [Tarook](https://docs.tarook.cloud/devel/user/guide/quick-start/index.html) on OpenStack.
 
 ## Requirements
 
